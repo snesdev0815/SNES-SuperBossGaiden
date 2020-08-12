@@ -1,0 +1,11 @@
+/**
+* VWF font file includes and lookup table
+*
+*/
+
+.Section "vwfFontLUT" superfree
+vwfFontLUT:
+  PTRLONG vwfFontLUT FONT.big_2bpp
+.ends
+
+  VWF_FONT_PACKED big_2bpp 16x16_2bpp

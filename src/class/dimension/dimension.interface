@@ -1,0 +1,446 @@
+/**
+* Part of a crude, hardcoded interface model.
+*
+*/
+
+;zp-vars
+.enum 0
+  _iterator INSTANCEOF iteratorStruct
+  _dimension INSTANCEOF dimensionStruct
+.ende
+
+.section "interface.dimension"
+/*
+* set pixel position of object
+*/
+interface.dimension.setPosition:
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  stz.b _dimension.position.x
+  sta.b _dimension.position.x + 1
+
+  lda OBJECT.CALL.ARG.2,s
+  stz.b _dimension.position.y  
+  sta.b _dimension.position.y + 1
+    
+  rts
+
+
+/*
+* get pixel position of object
+*/
+interface.dimension.getPosition:
+  AX16
+  lda.b _dimension.direction
+  and.w #$ff
+  ldx.b _dimension.position.x + 1
+  ldy.b _dimension.position.y + 1
+  rts
+
+/*
+* get pixel position of object
+*/
+interface.dimension.getCenterPosition:
+  AX16
+  lda _dimension.size.x
+  lsr a
+  clc
+  adc _dimension.position.x + 1
+  tax
+  lda _dimension.size.y
+  lsr a
+  clc
+  adc _dimension.position.y + 1
+  tay
+  rts
+
+
+/*
+* get pixel position of object
+*/
+interface.dimension.getCollisionBasepoint:
+  AX16
+  lda.b _dimension.position.x + 1
+  clc
+  adc _dimension.collision.basepoint.x
+  tax  
+  lda.b _dimension.position.y + 1
+  clc
+  adc _dimension.collision.basepoint.y
+  tay
+  sec
+  rts
+ 
+/*
+* get pixel size of object, also direction (hack)
+*/
+interface.dimension.getSize:
+  AX16
+  ldx.b _dimension.size.x
+  ldy.b _dimension.size.y
+  lda.b _dimension.direction
+  and.w #$ff
+  rts
+
+/*
+* move object with subpixel accuracy
+*
+* param 1 <int, 16bit>  ;x-axis translation value
+* param 2 <int, 16bit>  ;y-axis translation value
+*/
+interface.dimension.translate:
+  AX16
+  lda OBJECT.CALL.ARG.2,s
+  tay
+  lda OBJECT.CALL.ARG.1,s
+  tax  
+  jmp dimension.library.translate
+
+
+dimension.library.translate:
+  AX16
+  tya
+  bmi +
+    adc.b _dimension.position.y
+    sta.b _dimension.position.y
+    sep #$20
+    lda _dimension.position.y + 2
+    adc #0
+    sta _dimension.position.y + 2
+    bra ++
+    
++
+    adc.b _dimension.position.y
+    sta.b _dimension.position.y
+    sep #$20
+    lda _dimension.position.y + 2
+    sbc #0
+    sta _dimension.position.y + 2
+
+++
+  rep #$31
+  txa
+  bmi +
+    adc.b _dimension.position.x
+    sta.b _dimension.position.x
+    sep #$20
+    lda _dimension.position.x + 2
+    adc #0
+    sta _dimension.position.x + 2
+  
+    bra ++
+    
++
+    adc.b _dimension.position.x
+    sta.b _dimension.position.x
+    sep #$20
+    lda _dimension.position.x + 2
+    sbc #0
+    sta _dimension.position.x + 2
+
+++
+  rep #$31
+  rts
+
+dimension.library.getTargetDirectionBasepoint:
+  AX16
+  tya
+  sec
+  sbc _dimension.position.y+1
+  sec
+  sbc _dimension.collision.basepoint.y
+  jsr _clampDistance
+  tay
+
+  txa
+  sec
+  sbc _dimension.position.x+1
+  sec
+  sbc _dimension.collision.basepoint.x
+  jsr _clampDistance
+  tax
+
+  jsr core.math.atan2
+
+  and.w #$ff
+  rts
+
+;limit distance to 7 bits
+_clampDistance:
+  AX16
+  cmp.w #$8000
+  bcs ++
+    ;distance positive
+    ;any out of range bits set? clamp to max value
+    bit.w #$3f ~$ffff
+    beq +
+      lda.w #$3f
+      bra +
+
+++
+    ;distance negative
+    cmp.w #$ffc1
+    bcs +
+      lda.w #$7f
+
++
+  and.w #$7f
+  rts
+
+interface.dimension.applyGravity:
+  AX16
+  ;php
+  ;rep #$31
+  lda _dimension.speed.y
+  adc #GRAVITY.ACCELERATION
+  sta _dimension.speed.y
+  
+interface.dimension.applySpeedZ:
+  lda _dimension.speed.y
+  bpl +
+    ;traveling upwards
+    lda.b _dimension.position.y
+    clc
+    adc _dimension.speed.y
+    sta.b _dimension.position.y
+
+    sep #$20
+    lda.b _dimension.position.y+2
+    sbc #0
+    sta.b _dimension.position.y+2
+    
+    bra ++
+
++
+    ;traveling downwards
+    lda.b _dimension.position.y
+    clc
+    adc _dimension.speed.y
+    sta.b _dimension.position.y
+
+    sep #$20
+    lda.b _dimension.position.y+2
+    adc #0
+    sta.b _dimension.position.y+2
+
+++
+  rep #$31
+  ;plp
+  rts
+
+
+/*
+* move object in direction specified by radial angle
+*
+* @param a <int, 16bit>  ;angle
+* @param x <int, 16bit>  ;speed
+*/
+interface.dimension.applyAngle:
+  php
+  phx
+  pha
+  rep #$31
+  ;calculate displacement, x
+  lda 1,s
+  and.w #$ff
+  jsr core.math.cos
+  tax
+  lda 3,s
+  jsr core.math.mul
+  bit.w #$8000
+  bne +
+  ;bmi +
+    clc
+    adc _dimension.position.x
+    sta _dimension.position.x
+    lda _dimension.position.x +2
+    adc #0
+    sta _dimension.position.x +2
+    bra ++
++
+    clc
+    adc _dimension.position.x
+    sta _dimension.position.x
+    lda _dimension.position.x +2
+    sbc #0
+    sta _dimension.position.x +2
+
+++
+
+
+  ;calculate displacement, y
+  lda 1,s
+  and.w #$ff
+  jsr core.math.sin
+  tax
+  lda 3,s
+  jsr core.math.mul
+  bit.w #$8000
+  bne +  
+  ;bmi +
+    clc
+    adc _dimension.position.y
+    sta _dimension.position.y
+    lda _dimension.position.y +2
+    adc #0
+    sta _dimension.position.y +2
+    bra ++
++
+    clc
+    adc _dimension.position.y
+    sta _dimension.position.y
+    lda _dimension.position.y +2
+    sbc #0
+    sta _dimension.position.y +2
+
+++
+  pla
+  plx
+  plp
+  rts
+
+
+interface.dimension.center:
+  AX16
+  lda _dimension.size.x
+  lsr a
+  pha
+  lda _dimension.position.x+1
+  sec
+  sbc 1,s
+  sta _dimension.position.x+1
+  pla
+  lda _dimension.size.y
+  lsr a
+  pha
+  lda _dimension.position.y+1
+  sec
+  sbc 1,s
+  sta _dimension.position.y+1
+  pla
+  rts
+
+
+;a: sound effect
+interface.dimension.playSoundEffect:
+  AX16
+  ldy.w #0  ;default vol
+  ldx.w #0  ;default pitch
+  jmp core.audio.playEffect
+
+;a: sound effect
+extern.dimension.playSoundEffect:
+  AX16
+  ldy.w #0  ;default vol
+  ldx.w #0  ;default pitch
+  jsr core.audio.playEffect
+  rtl
+
+;target_angle = atan2 (target_y - y, target_x - x);
+interface.dimension.getTargetDirection:
+  AX16
+  ldx.w #_iterator.target
+  jsr core.object.exists
+  bcs +
+    clc
+    rts
+
++  
+  pha
+  pha
+  jsr interface.dimension.getCenterPosition
+  phy
+  phx
+
+  CALL sprite.generic.getCollisionBasepoint.MTD _iterator.target
+
+  tya
+  sta 7,s
+  sec
+  sbc 3,s
+  lsr a
+  lsr a
+  and.w #$7f
+  tay
+
+  txa
+  sta 5,s
+  sec
+  sbc 1,s
+  lsr a
+  lsr a
+  and.w #$7f
+  tax
+
+  jsr core.math.atan2
+  tay
+
+  lda 1,s
+  sec
+  sbc 5,s
+  jsr core.math.abs
+  sta 5,s
+
+  lda 3,s
+  sec
+  sbc 7,s
+  jsr core.math.abs
+  clc
+  adc 5,s
+  tax
+
+  tya
+  
+  ply
+  ply
+  ply
+  ply
+  sec
+  rts
+
+interface.dimension.checkOnScreen:
+  AX16
+  /*
+  relative. onscreen:
+    obj.x+obj.sz.x > scr.x
+    && scr.x+scr.sz.x > obj.x
+
+  */
+  lda _dimension.position.x + 1
+  clc
+  adc _dimension.size.x
+  cmp.w (GLOBAL.screen.position.x &$ffff) +1
+  bcc ++
+
+  lda.w (GLOBAL.screen.position.x &$ffff) +1
+  clc
+  adc.w #SCREEN.DEFAULT.SIZE.X
+  cmp _dimension.position.x + 1
+  bcc ++
+
+  lda _dimension.position.y + 1
+  clc
+  adc _dimension.size.y
+  cmp.w (GLOBAL.screen.position.y &$ffff) +1
+  bcc ++
+
+  lda.w (GLOBAL.screen.position.y &$ffff) +1
+  clc
+  adc.w #SCREEN.DEFAULT.SIZE.Y
+  cmp _dimension.position.y + 1
+  bcc ++
+
+  lda.w #OBJECT.PROPERTIES.isOnScreen
+  tsb.b _iterator.properties
+  sec
+  rts
+
+
+++
+;fail
+  lda.w #OBJECT.PROPERTIES.isOnScreen
+  trb.b _iterator.properties    
+  clc
+  rts
+
+.ends

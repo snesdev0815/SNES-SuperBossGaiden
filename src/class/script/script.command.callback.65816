@@ -1,0 +1,48 @@
+/**
+* option that triggers command on callee if selected
+*/
+.include "src/class/script/script.command.callback.h"
+.section "script.command.callback"
+
+  /**
+  * @param 1<int, 16bit>  callback command
+  * @param 2<object hash, 32bit>  target vwf textlayer to draw to
+  */
+  METHOD init
+  lda OBJECT.CALL.ARG.4,s
+  sta this.caller+2
+  lda OBJECT.CALL.ARG.5,s
+  sta this.caller
+
+  lda OBJECT.CALL.ARG.1,s
+  sta.b this.command
+
+  lda OBJECT.CALL.ARG.2,s
+  sta.b this.controller
+
+  lda OBJECT.CALL.ARG.3,s  
+  stz option.value
+  rts
+
+  METHOD play
+  ldx this.controller
+  jsr core.input.get.trigger
+  bit.w #JOY_BUTTON_A
+  beq +
+    pei (this.value)
+    pei (this.command)
+    CALL lifeform.library.oncommand.MTD this.caller
+    pla
+    pla
++
+  rts
+
+
+  METHOD kill
+  jmp object.library.kill
+
+
+  CLASS script.command.callback
+
+.ends	
+	

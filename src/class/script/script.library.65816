@@ -1,0 +1,21 @@
+/**
+* Helper functions for script handling
+* 
+*/
+
+.include "src/class/script/script.library.h"
+.section "script.library"
+
+
+/**
+* inits individual, relative script time-counter
+*
+*/
+script.library.initAge:
+  AX16
+  lda.w FrameCounter
+  sta.b script.timestamp.start
+  rts
+
+.ends	
+	

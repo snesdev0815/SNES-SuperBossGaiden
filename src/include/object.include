@@ -1,0 +1,135 @@
+/**
+* Object/Class includes
+*
+*/
+
+;spit out globally unique obj-ids. order does not matter. reason for this hack is that wla dx is unable to calculate global count
+.enum 0 export
+OBJID.iterator.library db
+OBJID.sprite.library db
+OBJID.lifeform.library db
+OBJID.Script  db
+
+OBJID.Brightness db
+OBJID.fixedColor db
+OBJID.hdma.windowAnimation db
+OBJID.hdma.windowMaskAnimation db
+OBJID.hdma.paletteAnimation db
+OBJID.hdma.logoZoom db
+OBJID.hdma.brightness db
+OBJID.level.generic db
+OBJID.background.level.layer db
+OBJID.background.generic db
+OBJID.background.hud db
+OBJID.vwf.renderer db
+OBJID.vwf.parser db
+OBJID.background.textlayer.vwf db
+OBJID.Palette.fade db
+OBJID.palette.animation db
+OBJID.palette.bgcolor db
+OBJID.sprite.generic db
+OBJID.sprite.dummy db
+OBJID.sprite.once db
+OBJID.sprite.directed db
+OBJID.level.screen.shake db
+OBJID.level.exit db
+OBJID.script.command.callback db
+OBJID.persistency.slot db
+OBJID.lifeform.player db
+OBJID.lifeform.npc db
+OBJID.lifeform.static db
+OBJID.lifeform.staticCutscene db
+OBJID.lifeform.bluecollar db
+OBJID.lifeform.bower db
+OBJID.lifeform.jumper db
+OBJID.lifeform.spiked_mine db
+OBJID.lifeform.floating_mine db
+OBJID.lifeform.jumpwalker db
+OBJID.lifeform.floater db
+OBJID.lifeform.shielder db
+OBJID.lifeform.parappa db
+OBJID.lifeform.fireball db
+OBJID.lifeform.slider db
+OBJID.lifeform.cannon db
+OBJID.lifeform.bomb db
+OBJID.lifeform.block db
+OBJID.sprite.berzerk.return db
+OBJID.lifeform.generator db
+OBJID.lifeform.miniboss db
+OBJID.lifeform.mg_rex db
+OBJID.lifeform.bossShot db
+OBJID.lifeform.ghost db
+OBJID.lifeform.sidekick db
+OBJID.lifeform.cone db
+
+MAXOBJID  ds 0
+.ende
+
+
+.base BSL
+.bank BANK.PROGRAM
+
+;interfaces
+.include "src/class/default/default.interface"
+.include "src/class/dimension/dimension.interface"
+
+.section "OopClassWordLut"
+OopClassWordLut:
+  PTRNORM OopClassWordLut iterator.library.CLS
+  PTRNORM OopClassWordLut sprite.library.CLS
+  PTRNORM OopClassWordLut lifeform.library.CLS
+  PTRNORM OopClassWordLut Script.CLS
+
+  PTRNORM OopClassWordLut Brightness.CLS
+  PTRNORM OopClassWordLut fixedColor.CLS
+  PTRNORM OopClassWordLut hdma.windowAnimation.CLS
+  PTRNORM OopClassWordLut hdma.windowMaskAnimation.CLS
+  PTRNORM OopClassWordLut hdma.paletteAnimation.CLS
+  PTRNORM OopClassWordLut hdma.logoZoom.CLS
+  PTRNORM OopClassWordLut hdma.brightness.CLS
+  PTRNORM OopClassWordLut level.generic.CLS
+  PTRNORM OopClassWordLut background.level.layer.CLS
+  PTRNORM OopClassWordLut background.generic.CLS
+  PTRNORM OopClassWordLut background.hud.CLS
+  PTRNORM OopClassWordLut vwf.renderer.CLS
+  PTRNORM OopClassWordLut vwf.parser.CLS
+  PTRNORM OopClassWordLut background.textlayer.vwf.CLS
+  PTRNORM OopClassWordLut Palette.fade.CLS
+  PTRNORM OopClassWordLut palette.animation.CLS
+  PTRNORM OopClassWordLut palette.bgcolor.CLS
+  PTRNORM OopClassWordLut sprite.generic.CLS
+  PTRNORM OopClassWordLut sprite.dummy.CLS
+  PTRNORM OopClassWordLut sprite.once.CLS
+  PTRNORM OopClassWordLut sprite.directed.CLS
+  PTRNORM OopClassWordLut level.screen.shake.CLS
+  PTRNORM OopClassWordLut level.exit.CLS
+  PTRNORM OopClassWordLut script.command.callback.CLS
+  PTRNORM OopClassWordLut persistency.slot.CLS
+  PTRNORM OopClassWordLut lifeform.player.CLS
+  PTRNORM OopClassWordLut lifeform.npc.CLS
+  PTRNORM OopClassWordLut lifeform.static.CLS
+  PTRNORM OopClassWordLut lifeform.staticCutscene.CLS
+  PTRNORM OopClassWordLut lifeform.bluecollar.CLS
+  PTRNORM OopClassWordLut lifeform.bower.CLS
+  PTRNORM OopClassWordLut lifeform.jumper.CLS
+  PTRNORM OopClassWordLut lifeform.spiked_mine.CLS
+  PTRNORM OopClassWordLut lifeform.floating_mine.CLS
+  PTRNORM OopClassWordLut lifeform.jumpwalker.CLS
+  PTRNORM OopClassWordLut lifeform.floater.CLS
+  PTRNORM OopClassWordLut lifeform.shielder.CLS
+  PTRNORM OopClassWordLut lifeform.parappa.CLS
+  PTRNORM OopClassWordLut lifeform.fireball.CLS
+  PTRNORM OopClassWordLut lifeform.slider.CLS
+  PTRNORM OopClassWordLut lifeform.cannon.CLS
+  PTRNORM OopClassWordLut lifeform.bomb.CLS
+  PTRNORM OopClassWordLut lifeform.block.CLS
+  PTRNORM OopClassWordLut sprite.berzerk.return.CLS
+  PTRNORM OopClassWordLut lifeform.generator.CLS
+  PTRNORM OopClassWordLut lifeform.miniboss.CLS
+  PTRNORM OopClassWordLut lifeform.mg_rex.CLS
+  PTRNORM OopClassWordLut lifeform.bossShot.CLS
+  PTRNORM OopClassWordLut lifeform.ghost.CLS
+  PTRNORM OopClassWordLut lifeform.sidekick.CLS
+  PTRNORM OopClassWordLut lifeform.cone.CLS
+
+.ends

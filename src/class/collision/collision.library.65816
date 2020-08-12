@@ -1,0 +1,327 @@
+/**
+* Helper functions for inter-object collision detection
+*
+*/
+
+
+.include "src/class/collision/collision.library.h"
+.section "collision"
+
+collision.library.fromBox.toDiameter.byId:
+  AX16
+  sta iterator.sort.target
+    
+  ;push current objects center and size on stack
+  lda dimension.size.x
+  lsr a
+  clc
+  adc dimension.position.x +1
+  pha
+
+  lda dimension.size.y
+  lsr a
+  clc
+  adc dimension.position.y +1
+  pha
+
+  pei (dimension.size.x)
+  pei (dimension.size.y)
+  pea 0 ;tmp
+  
+  ;find all matching objects and put them on the stack
+  jsr iterator.library.reset
+-   lda iterator.sort.target
+    jsr iterator.library.each.byId
+    
+    bcc ++
+      ;we're in target namespace frame now
+      phd
+      lda iterator.target+3
+      INDEX_TO_HASH_POINTER
+      tax
+      lda.l OopStack.dp,x
+      pha
+      pld
+
+      ;((a.width + b.width) >= abs(a.x - b.x) * 2) &&
+      ;((a.height + b.height) >= abs(a.y - b.y) * 2)
+      lda dimension.position.x+1
+      clc
+      adc dimension.collision.basepoint.x
+
+      sec  ;abs(a.x - b.x) * 2)
+      sbc 11,s
+      bpl +++
+        eor.w #$ffff
+        inc a
+
++++
+      asl a
+      sta 3,s
+
+      lda 7,s   ;(a.width + b.width)
+      clc
+      adc dimension.collision.diameter
+      cmp 3,s
+      bcc +
+
+      lda dimension.position.y+1
+      clc
+      adc dimension.collision.basepoint.y
+
+      sec  ;abs(a.y - b.y) * 2)
+      sbc 9,s
+      bpl +++
+        eor.w #$ffff
+        inc a
+
++++
+      asl a
+      sta 3,s
+      
+      lda 5,s
+      clc
+      adc dimension.collision.diameter
+      cmp 3,s
+      bcc +
+        ;collision detected
+        pld
+        pla
+
+        pla
+        pla
+        pla
+        pla
+        sec
+        rts
+
++    
+    pld    
+    bra -
+
+++
+  pla
+
+  pla
+  pla
+  pla
+  pla
+  clc
+  rts
+
+collision.library.fromDiameter.toDiameter.noReset:
+  AX16
+  pea iterator.library.others
+
+  sta iterator.sort.target
+    
+  ;push current objects center and size on stack
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  pha
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  pha
+  pei (dimension.collision.diameter)
+  pei (dimension.collision.diameter)
+  pea 0 ;tmp
+  jmp _fromDiameter.toDiameter.noReset
+
+/**
+* searches for next object box colliding with caller objects box. if found, writes target object hash to iterator.target of callee
+* Requires participating object to implement interface dimension
+*
+* @param a<int, 16bit>  target object properties (@see OBJID.[]). Object must satisfy requested properties to trigger match
+* @return c<bool>   true if collision occured
+*/
+collision.library.fromDiameter.toDiameter.byProperties:
+  AX16
+  pea iterator.library.others
+
+  sta iterator.sort.target
+    
+  ;push current objects center and size on stack
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  pha
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  pha
+  pei (dimension.collision.diameter)
+  pei (dimension.collision.diameter)
+  pea 0 ;tmp
+  jmp _fromDiameter.toDiameter
+
+_fromDiameter.toDiameter:
+  jsr iterator.library.reset
+_fromDiameter.toDiameter.noReset:
+-   
+    lda 11,s
+    tax
+    lda iterator.sort.target
+    jsr core.subroutine.execute
+    
+    bcc ++
+      ;we're in target namespace frame now
+      phd
+      lda iterator.target+3
+      INDEX_TO_HASH_POINTER
+      tax
+      lda.l OopStack.dp,x
+      tcd
+
+      ;((a.width + b.width) >= abs(a.x - b.x) * 2) &&
+      ;((a.height + b.height) >= abs(a.y - b.y) * 2)
+      lda dimension.position.x+1
+      clc
+      adc dimension.collision.basepoint.x      
+
+      sec  ;abs(a.x - b.x) * 2)
+      sbc 11,s
+      bpl +++
+        eor.w #$ffff
+        inc a
+
++++
+      asl a
+      sta 3,s
+
+      lda 7,s   ;(a.width + b.width)
+      clc
+      adc dimension.collision.diameter
+      cmp 3,s
+      bcc +
+
+      lda dimension.position.y+1
+      clc
+      adc dimension.collision.basepoint.y      
+
+      sec  ;abs(a.y - b.y) * 2)
+      sbc 9,s
+      bpl +++
+        eor.w #$ffff
+        inc a
+
++++
+      asl a
+      sta 3,s
+      
+      lda 5,s
+      clc
+      adc dimension.collision.diameter
+      cmp 3,s
+      bcc +
+        ;collision detected
+        pld
+        pla
+
+        pla
+        pla
+        pla
+        pla
+        pla
+        sec
+        rts
+
++    
+    pld    
+    bra -
+
+++
+  pla
+
+  pla
+  pla
+  pla
+  pla
+  pla
+  clc
+  rts
+
+
+collision.library.fromAttackDiameter.toDiameter.byProperties:
+  AX16
+  pea iterator.library.others
+
+  sta iterator.sort.target
+    
+  ;push current objects center and size on stack
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  pha
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  pha
+  lda dimension.direction
+  and.w #$3
+  asl a
+  tax
+  lda dimension.collision.diameter
+  jsr (_amendAttackPosition.lut,x)
+  lda dimension.collision.diameter
+  asl a
+  asl a
+  pha
+  pha 
+  pea 0 ;tmp
+  jmp _fromDiameter.toDiameter.noReset
+
+_amendAttackPosition.lut:
+  .dw _amendAttackPosition.right
+  .dw _amendAttackPosition.left
+  .dw _amendAttackPosition.down
+  .dw _amendAttackPosition.up
+
+_amendAttackPosition.left:
+  eor.w #$ffff
+  inc a
+_amendAttackPosition.right:
+  clc
+  adc 3,s
+  sta 3,s
+  rts
+
+_amendAttackPosition.up:
+  eor.w #$ffff
+  inc a
+_amendAttackPosition.down:
+  clc
+  adc 5,s
+  sta 5,s
+  rts
+
+
+/**
+* searches for next object box colliding with caller objects box. if found, writes target object hash to iterator.target of callee
+* Requires participating object to implement interface dimension
+*
+* @param a<int, 16bit>  target object properties (@see OBJID.[]). Object must satisfy requested properties to trigger match
+* @return c<bool>   true if collision occured
+*/
+collision.library.fromDiameter.toDiameter.byId:
+  AX16
+  pea iterator.library.each.byId
+
+  sta iterator.sort.target
+    
+  ;push current objects center and size on stack
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  pha
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  pha
+  pei (dimension.collision.diameter)
+  pei (dimension.collision.diameter)
+  pea 0 ;tmp
+  jmp _fromDiameter.toDiameter
+
+.ends

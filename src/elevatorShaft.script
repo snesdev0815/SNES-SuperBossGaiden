@@ -1,0 +1,64 @@
+/**
+* Cutscene where Fausto prepares to throw bombs
+*
+*/
+
+  SCRIPT elevatorShaft
+
+  .redef obj.script.slave hashPtr.1
+
+  .redef obj.hud this._tmp
+  .redef obj.bomb this._tmp+4
+
+  SET_CUTSCENE_MANDATORY
+
+  CUTSCENE_KILL_ENEMIES
+  CUTSCENE_PAUSE_PLAYER
+
+  HUD_DISABLE obj.hud
+  
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.headingElevator FALSE
+  WAIT_FOR obj.script.slave
+
+
+  AUDIO_FADE AUDIO.VOLUME.MUTE
+
+  WAIT_AUDIO_FADE_COMPLETE
+
+  SCRIPT_JSR core.audio.stopSong
+  EXPLOSION_BIG 1784 430
+  CUTSCENE_WAIT_SHORT
+  EXPLOSION_BIG 1800 450
+  CUTSCENE_WAIT_SHORT
+  EXPLOSION_BIG 1830 453
+
+
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.wontGetOut FALSE
+  WAIT_FOR obj.script.slave
+
+  SCRIPT_NEW_TRY lifeform.bomb.CLS.PTR obj.bomb 1840 272 0 0 0
+
+  pea MATH.135_DEG+7
+  pea 2
+  pei (iterator.self)
+  pei (iterator.self+2)
+  SCRIPT_TRY lifeform.bomb.oncommand.MTD obj.bomb LIFEFORM.COMMAND.THROW
+  pla
+  pla
+  pla
+  pla
+
+  lda.w #Song.danger.PTR
+  SCRIPT_JSR core.audio.playSong
+
+  SLEEP 10
+
+_elevatorShaftEnd:
+
+  SCRIPT_TRY Script.kill.MTD obj.script.slave
+  CUTSCENE_RESUME_PLAYER
+
+  HUD_ENABLE obj.hud
+
+  DIE
+

@@ -1,0 +1,66 @@
+.include "src/core/header.h"
+
+.org $7fc0
+.section "header" force
+  .db "SUPER BOSS GAIDEN    "
+  ;.db $35   ;exhirom mapping   
+  .db $30  ;normal hirom mapping
+.if USE_FLASH_SAVE == 1    
+  .db $1  ;cartridgetype rom+ram
+.else  
+  .db $2  ;cartridgetype sram + batt
+.endif  
+  .db 9  ;4mbit romsize
+.if USE_FLASH_SAVE == 1
+  .db 0 ;no sram
+.else  
+  .db 1 ;sramsize
+.endif  
+  .db 0 ;country
+  .db $33	;license code, extended header
+  .db 2 ;version
+checksum.rom.xor:
+  .dw $ffff
+checksum.rom:
+  .dw $0000
+.ends
+
+.org $7FB0h
+.section "extended header" force
+	.db "DL"	;extended maker code. DL = Dieter von Laser
+	.db "USBJ"	;extended game code. U == unlicensed/homebrew
+	.db 0,0,0,0,0,0	;reserved
+.if USE_FLASH_SAVE == 1    	
+	.db 9	;4mbit expansion flash
+.else	
+	.db 0	;no expansion flash
+.endif	
+	.db 0	;no expansion ram
+	.db 0	;no special version
+	.db 0	;no chipset subtype
+.ends
+
+.bank 0 slot 0
+.org $7fe4
+.section "native vector" force
+	.dw StopCop
+	.dw Stop
+checksum.kernel.xor:
+	.dw $ffff
+	.dw NmiHandler
+checksum.kernel:
+	.dw $0000
+	.dw IrqHookUp
+.ends
+
+.org $7ff4
+.section "emu vector" force
+	.dw StopCop
+	.dw EmptyHandler
+	.dw EmptyHandler
+	.dw EmptyHandler
+	.dw Boot
+	.dw 0
+.ends
+
+.bank BANK.PROGRAM

@@ -1,0 +1,23 @@
+/**
+* Spiky room cutscene
+*
+*/
+
+  SCRIPT spikeRoom
+
+  .redef obj.script.slave hashPtr.1
+
+  .redef obj.hud this._tmp
+  
+	SET_CUTSCENE_OPTIONAL
+
+  HUD_DISABLE obj.hud
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.spikes FALSE
+  WAIT_FOR obj.script.slave
+
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.stopManiac FALSE
+  WAIT_FOR obj.script.slave
+  HUD_ENABLE obj.hud
+
+  CUTSCENE_WAIT
+  DIE

@@ -1,0 +1,153 @@
+/**
+* Pause the game when pressing start
+*
+*/
+
+  SCRIPT pause
+
+ .redef obj.brightness this._tmp
+ .redef obj.hud this._tmp+4
+ .redef song.current this._tmp+8
+
+  lda.w GLOBAL.dialogueState
+  cmp.w #DIALOGUE.STATE.GAME_BEATEN
+  bne +
+    LOOP 2
+    LOOP
+    DIE
+
++    
+  ;pause 
+  SCRIPT_JSR iterator.library.reset
+-
+  lda.w #OBJECT.PROPERTIES.isLifeform
+  jsl extern.iterator.each.byProperties
+  bcc +
+    ldx #iterator.target
+    SCRIPT_JSR core.object.pause
+    bra -
+        
++
+
+  SCRIPT_JSR iterator.library.reset
+-
+  lda.w #Script.CLS.PTR
+  SCRIPT_JSR iterator.library.each.byId
+  bcc +
+    lda.b iterator.target
+    cmp.b iterator.self
+    beq -
+
+    ldx #iterator.target
+    SCRIPT_JSR core.object.pause
+    bra -
+        
++
+  SCRIPT_JSR iterator.library.reset
+-
+  lda.w #sprite.berzerk.return.CLS.PTR
+  SCRIPT_JSR iterator.library.each.byId
+  bcc +
+    ldx #iterator.target
+    SCRIPT_JSR core.object.pause
+    bra -
+        
++
+
+  SCRIPT_JSR iterator.library.reset
+-
+  lda.w #lifeform.generator.CLS.PTR
+  SCRIPT_JSR iterator.library.each.byId
+  bcc +
+    ldx #iterator.target
+    SCRIPT_JSR core.object.pause
+    bra -
+        
++
+
+  CUTSCENE_ACQUIRE_OBJECT background.hud.CLS.PTR obj.hud
+
+  ldx #obj.hud
+  SCRIPT_JSR core.object.pause
+
+  SCRIPT_NEW Brightness.CLS.PTR obj.brightness
+  lda #BRIGHTNESS.HALF
+  SCRIPT_CALL Brightness.fadeTo.MTD obj.brightness
+
+  lda.w GLOBAL.audio.song.current
+  sta song.current
+
+  lda.w #Song.pause.PTR
+  SCRIPT_JSR core.audio.playSong
+  
+  LOOP 10
+  LOOP
+
+  SAVE
+  
+  ldx.w #INPUT.DEVICE.ID.0
+  SCRIPT_JSR core.input.get.trigger
+  and.w #JOY_BUTTON_START
+  bne +
+    rts
+
++  
+
+  lda song.current
+  SCRIPT_JSR core.audio.playSong
+
+  lda #BRIGHTNESS.FULL
+  SCRIPT_CALL Brightness.fadeTo.MTD obj.brightness
+
+  ldx #obj.hud
+  SCRIPT_JSR core.object.resume
+
+  ;resume 
+  SCRIPT_JSR iterator.library.reset
+-
+  lda.w #lifeform.generator.CLS.PTR
+  SCRIPT_JSR iterator.library.each.byId
+  bcc +
+    ldx #iterator.target
+    SCRIPT_JSR core.object.resume
+    bra -
+        
++
+
+  SCRIPT_JSR iterator.library.reset
+-
+  lda.w #sprite.berzerk.return.CLS.PTR
+  SCRIPT_JSR iterator.library.each.byId
+  bcc +
+    ldx #iterator.target
+    SCRIPT_JSR core.object.resume
+    bra -
+        
++
+
+  SCRIPT_JSR iterator.library.reset
+-
+  lda.w #OBJECT.PROPERTIES.isLifeform
+  jsl extern.iterator.each.byProperties
+  bcc +
+    ldx #iterator.target
+    SCRIPT_JSR core.object.resume
+    bra -
+        
++
+
+  SCRIPT_JSR iterator.library.reset
+-
+  lda.w #Script.CLS.PTR
+  SCRIPT_JSR iterator.library.each.byId
+  bcc +
+    lda.b iterator.target
+    cmp.b iterator.self
+    beq -
+
+    ldx #iterator.target
+    SCRIPT_JSR core.object.resume
+    bra -
+        
++
+  DIE

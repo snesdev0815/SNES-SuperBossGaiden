@@ -1,0 +1,711 @@
+/**
+* dma fifo manager.
+*
+* because vram transfers can only happen during blanking period and we don't want any routine that uploads something to vram block the system until vblank occurs,
+* routines call this manager instead.
+* It queues requested dma transfers and then fires them all when vblank is entered(usually during nmi).
+* Routines can poll queue status (empty/not-empty), but can't see if any individual transfer has completed or not
+* Also, overloading the queue will result in excessive vblank times that reach into the active display period
+*
+* Note that in order to present a uniform interface, all input byte adresses and lengths are given in bytes, no matter if the transfer target uses byte or word adresses.
+* Size conversion is handled internally according to transfer target.
+* This means that routines registering vram or cgram transfers should NOT divide adresses by 2 prior to registering, but register the real byte target adress instead.
+*
+* queue{ (8 bytes each)
+*   2byte: target adress (msb set means "transfer active")
+*   1byte: target register
+*   3byte: source adress
+*   2byte: transfer length
+* }
+* 
+* queue pointer operation:
+*	-queue starts at 0, wraps around at 8
+*	-queue pointer is incremented only when executing transfers, not when registering transfers
+*	-after the last transfer has been executed, the queue pointer must point to the slot last occupied by that transfer.
+*	-new transfers always start looking at pointer for new slots, then increment. if whole list was searched without finding a free slot, transfer is aborted  
+*
+*/
+
+
+.include "src/core/dma.h"
+.section "dmaFifo"
+
+
+/**
+* just clearing all global vars to zero, must be called before any queue processing takes place
+*
+*/
+core.dma.init:
+  AX16
+  sep #$20
+  lda #0
+  ldy.w #DMA_QUEUE.GLOBAL.END - DMA_QUEUE.GLOBAL.START
+  ldx.w #DMA_QUEUE.GLOBAL.START
+  jsr ClearWRAM
+
+  rep #$31
+  and.w #$ff
+  tax
+  sep #$20  
+  lda.l dmaBitflagLut,x
+  sta.w GLOBAL.dmaQueueChannel.flag
+
+  rep #$31
+  rts
+
+.def STACK_OFFSET 0
+;too important to be redirected to external
+core.dma.registerTransfer:
+  AX16
+  php
+  phx
+  sei
+  lda.w GLOBAL.currentDmaQueueSlot
+  and.w #(DMA_QUEUE_SLOTS * _sizeof_dmaQueue) - 1
+  tax
+  
+  ldy.w #DMA_QUEUE_SLOTS
+
+;seek free queue slot
+- lda.w GLOBAL.dmaQueue.1.transferType,x
+  bit.w #DMA_TRANSFER.OPTION.ACTIVE
+  beq +
+
+  txa
+  clc
+  adc.w #_sizeof_dmaQueue
+  and.w #(DMA_QUEUE_SLOTS * _sizeof_dmaQueue) - 1
+  tax
+  dey
+  bne -
+    plx
+    plp
+    clc
+    rts
+
+;got free slot, x is pointer to slot
++ lda 13+STACK_OFFSET,s
+  and.w #(DMA_TRANSFER.OPTION.FIXED_SOURCE | DMA_TRANSFER.OPTION.ACTIVE | DMA_TRANSFER.OPTION.REVERSE) ~$ff
+  cmp.w #DMA_TRANSFER.MAX
+  bcc +
+    pha
+    SCRIPT_TRIGGER_ERROR E_InvalidDmaTransferType
+
+
++ 
+  lda 9+STACK_OFFSET,s
+  sta.w (GLOBAL.dmaQueue.1.sourceAdress & $ffff) + 1 ,x
+  lda 11+STACK_OFFSET,s
+  sta.w GLOBAL.dmaQueue.1.sourceAdress,x
+
+  lda 8+STACK_OFFSET,s
+  sta.w GLOBAL.dmaQueue.1.targetAdress,x
+  lda 6+STACK_OFFSET,s
+  bne +
+  ;zero length transfer encountered, abort.
+  pha
+    SCRIPT_TRIGGER_ERROR E_InvalidDmaTransferLength
+
+
++ sta.w GLOBAL.dmaQueue.1.transferLength,x  
+
+  clc
+  adc.w GLOBAL.dmaQueueChannel.size.total
+  sta.w GLOBAL.dmaQueueChannel.size.total   ;add total amount of bytes to be transferred for current frame
+
+  ;only mark as active after everything else has been written, else we get bad transfers if nmi/dma queue irq triggers right in the middle of this routine!!
+  ;we could disable nmi altogether while inside this routine, but that'd mean loosing a frame every now and then
+  sep #$20
+  lda 13+STACK_OFFSET,s
+  ora #DMA_TRANSFER.OPTION.ACTIVE
+  sta.w GLOBAL.dmaQueue.1.transferType,x
+
+  plx
+  plp
+  sec
+  rts
+
+.redef STACK_OFFSET 3
+;immediate transfer of blocks to various ram regions, for volatile buffers
+;disables nmi, screen & hdma.
+core.dma.immediateTransfer:
+  AX16
+  php
+  phd
+  phb
+  pea REGS
+  plb
+  plb
+  phx
+  sei
+  jsr core.nmi.stop
+  jsr core.nmi.blankScreen
+  
+  lda.w #GLOBAL.dmaQueueImmediate
+  tcd
+
+.if DEBUG == 1
+  lda 13+STACK_OFFSET,s
+  and.w #(DMA_TRANSFER.OPTION.FIXED_SOURCE | DMA_TRANSFER.OPTION.ACTIVE | DMA_TRANSFER.OPTION.REVERSE) ~$ff
+  cmp.w #DMA_TRANSFER.MAX
+  bcc +
+    pha
+    SCRIPT_TRIGGER_ERROR E_InvalidDmaTransferType
+
++ 
+.endif
+
+  lda 9+STACK_OFFSET,s
+  sta.b dmaQueue.sourceAdress + 1
+  lda 11+STACK_OFFSET,s
+  sta.b dmaQueue.sourceAdress
+
+  lda 8+STACK_OFFSET,s
+  sta.b dmaQueue.targetAdress
+  lda 6+STACK_OFFSET,s
+  bne +
+    ;zero length transfer encountered, abort.
+    pha
+      SCRIPT_TRIGGER_ERROR E_InvalidDmaTransferLength
+
+
++ sta.b dmaQueue.transferLength
+
+  ;only mark as active after everything else has been written, else we get bad transfers if nmi/dma queue irq triggers right in the middle of this routine!!
+  ;we could disable nmi altogether while inside this routine, but that'd mean loosing a frame every now and then
+  sep #$20
+  lda 13+STACK_OFFSET,s
+  ora #DMA_TRANSFER.OPTION.ACTIVE
+  sta.b dmaQueue.transferType
+
+  rep #$31
+  lda.b dmaQueue.transferType
+  and.w #(DMA_TRANSFER.OPTION.FIXED_SOURCE | DMA_TRANSFER.OPTION.ACTIVE | DMA_TRANSFER.OPTION.REVERSE) ~$ff
+
+  asl a
+  tax
+  jsr (dmaQueueJumpTable,x)
+
+  plx
+  plb
+  pld
+  plp
+  sec
+  jmp core.nmi.start
+
+
+
+/**
+* reports whether transfer size is still safe to register for current frame 
+*
+* @param a int  ;size of transfer to be scheduled
+* @return carry bool    set if queue is empty
+*/
+.redef STACK_OFFSET 3
+core.dma.check.length:
+  AX16
+  clc
+  adc.w GLOBAL.dmaQueueChannel.size.total
+  cmp #DMA_TRANSFER.TRANSFER.MAX
+  bcs +
+    sec
+    rts
+
++
+  clc
+  rts
+
+core.dma.remainingFree:
+  AX16
+  lda.w #DMA_TRANSFER.TRANSFER.MAX
+  sec
+  sbc.w GLOBAL.dmaQueueChannel.size.total
+  bcs +
+    ;already overflowed, return zero
+    lda.w #0
++
+  rts
+
+
+/**
+* processes all queued transfers.
+* WARNING: vblank must be active/forced when calling this routine, else transfers won't go through if target is vram
+*
+*/
+core.dma.processQueue:
+  AX16
+  phd
+
+  lda.w GLOBAL.currentDmaQueueSlot
+dmaQueueLoop:
+  and.w #(DMA_QUEUE_SLOTS * _sizeof_dmaQueue) - 1
+  sta.w GLOBAL.currentDmaQueueSlot
+  clc
+  adc.w #GLOBAL.dmaQueue
+  tcd
+
+	lda.b dmaQueue.transferType
+	bit.w #DMA_TRANSFER.OPTION.ACTIVE
+	beq doneProcessingQueue
+
+  and.w #(DMA_TRANSFER.OPTION.FIXED_SOURCE | DMA_TRANSFER.OPTION.ACTIVE | DMA_TRANSFER.OPTION.REVERSE) ~$ff
+.if DEBUG == 1
+	cmp.w #DMA_TRANSFER.MAX
+	bcc +
+	  pha
+    SCRIPT_TRIGGER_ERROR E_InvalidDmaTransferType
+
++
+.endif
+	asl a
+	tax
+	jsr (dmaQueueJumpTable,x)
+
+	stz.b dmaQueue.transferType
+	stz.b dmaQueue.transferLength
+
+  lda.w GLOBAL.currentDmaQueueSlot
+	clc
+	adc.w #_sizeof_dmaQueue
+	bra dmaQueueLoop
+
+doneProcessingQueue:
+  stz.w GLOBAL.dmaQueueChannel.size.total
+  pld
+  rts
+
+.macro SET_DMAP_0
+  A8
+  pha
+  lda.b dmaQueue.transferType
+  bit.b #DMA_TRANSFER.OPTION.FIXED_SOURCE
+  beq +
+    lda 1,s
+    ora.b #DMAP_FIXED_TRANSFER
+    sta 1,s
+
++
+  lda.b dmaQueue.transferType
+  bit.b #DMA_TRANSFER.OPTION.REVERSE
+  beq +
+    lda 1,s
+    ora.b #DMAP_TRANSFER_DIRECTION
+    sta 1,s
+
++ pla
+  sta.w DMAP1
+.endm
+
+
+dmaQueueJumpTable:
+  .dw dmaQueueVramTransfer
+  .dw dmaQueueVramTilelineHorizontalTransfer
+  .dw dmaQueueVramTilelineVerticalTransfer
+  .dw dmaQueueVramSpritetile32x32Transfer
+  .dw dmaQueueOamTransfer
+  .dw dmaQueueCgramTransfer
+
+dmaQueueVramTransfer:
+  lda.b dmaQueue.sourceAdress
+  sta.w DMASRC1L
+  lda.b dmaQueue.sourceAdress + 1
+  sta.w DMASRC1H
+
+  lda.b dmaQueue.targetAdress
+  lsr a
+  sta.w VMADDL
+
+  lda.b dmaQueue.transferLength
+  sta.w DMALEN1L
+
+  sep #$20
+  lda.b #VMAIN_INCREMENT_MODE
+  sta.w VMAIN
+
+  lda.b #DMAP_2_REG_WRITE_ONCE
+  SET_DMAP_0
+
+  lda.b #VMDATAL & $ff
+  sta.w DMADEST1
+
+  lda.b #DMA_CHANNEL1_ENABLE
+  sta.w MDMAEN
+ 
+  rep #$31
+  rts
+
+_32x32.length.lut:
+  .dw $200
+  .dw $180
+  .dw $100
+  .dw $080
+
+
+dmaQueueVramSpritetile32x32Transfer:
+  ;source row length, used to advance to next row
+  lsr dmaQueue.transferLength
+  lsr dmaQueue.transferLength
+  pei (dmaQueue.transferLength)
+
+-
+    ;transfer 4 rows (transfer as much as current interlace position allows)
+    lda.b dmaQueue.sourceAdress
+    sta.w DMASRC1L
+    clc
+    adc 1,s
+    sta.w DMASRC2L
+    clc
+    adc 1,s
+    sta.w DMASRC3L
+    clc
+    adc 1,s
+    sta.w DMASRC4L
+
+    lda.b dmaQueue.targetAdress
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    and.w #6
+    tax
+    lda.l _32x32.length.lut,x
+    ;get min between remaining length and row remainder
+    cmp.b dmaQueue.transferLength
+    bcc +
+      lda.b dmaQueue.transferLength
+
++
+    pha
+    lda.b dmaQueue.transferLength
+    sec
+    sbc 1,s
+    sta.b dmaQueue.transferLength
+    plx ;x now current length
+
+    ;transfer length
+    stx.w DMALEN1L
+    stx.w DMALEN2L
+    stx.w DMALEN3L
+    stx.w DMALEN4L
+    
+    sep #$20
+    lda.b dmaQueue.sourceAdress + 2
+    sta.w DMASRC1B
+    sta.w DMASRC2B
+    sta.w DMASRC3B
+    sta.w DMASRC4B
+
+    lda.b #VMAIN_INCREMENT_MODE
+    sta.w VMAIN
+
+    lda.b #DMAP_2_REG_WRITE_ONCE
+    SET_DMAP_0
+    sta.w DMAP2
+    sta.w DMAP3
+    sta.w DMAP4
+
+    lda.b #VMDATAL & $ff
+    sta.w DMADEST1
+    sta.w DMADEST2
+    sta.w DMADEST3
+    sta.w DMADEST4
+    rep #$31
+
+    lda.b dmaQueue.targetAdress
+    lsr a
+    sta.w VMADDL
+    ldy.w #DMA_CHANNEL1_ENABLE  
+    sty.w MDMAEN  ;overwriting hdma reg with 0. is this legal? should be if hdma is properly reenabled afterwards...
+
+    clc
+    adc.w #SPRITE.TILE.INTERLACE.LENGTH/2
+    sta.w VMADDL
+    ldy.w #DMA_CHANNEL2_ENABLE  
+    sty.w MDMAEN
+
+    clc
+    adc.w #SPRITE.TILE.INTERLACE.LENGTH/2
+    sta.w VMADDL
+    ldy.w #DMA_CHANNEL3_ENABLE  
+    sty.w MDMAEN
+
+    clc
+    adc.w #SPRITE.TILE.INTERLACE.LENGTH/2
+    sta.w VMADDL
+    ldy.w #DMA_CHANNEL4_ENABLE  
+    sty.w MDMAEN
+
+    ;done?
+    lda.b dmaQueue.transferLength
+    beq +
+      ;advance source pointer
+      txa
+      clc
+      adc.b dmaQueue.sourceAdress
+      sta.b dmaQueue.sourceAdress
+
+      phx
+      lda.b dmaQueue.targetAdress
+      clc
+      adc 1,s
+      bit.w #$200
+      beq ++
+        clc
+        adc.w #$600
+
+++      
+      sta.b dmaQueue.targetAdress
+      pla
+      jmp -
+
++  
+  pla
+  rts
+
+
+dmaQueueVramTilelineHorizontalTransfer:
+  phb
+  sep #$20
+  lda.b dmaQueue.sourceAdress + 2
+  pha
+  plb
+  rep #$31
+  ldx.b dmaQueue.sourceAdress ;x is source pointer
+  
+  ldy.b dmaQueue.targetAdress
+  pea 32/2
+
+-
+    tya
+    and.w #$f03f
+    pha ;lower bits
+    tya
+    and.w #$f03f ~$ffff
+    lsr a
+    bit.w #$20
+    beq +
+      ;upper table
+      clc
+      adc.w #$800
+
++
+    and.w #$f03f ~$ffff
+    ora 1,s
+    lsr a
+    sta.w VMADDL  
+    pla
+
+    lda.w 0,x
+    sta.w VMDATAL
+
+    iny
+    iny
+    inx
+    inx
+
+    tya
+    and.w #$f03f
+    pha ;lower bits
+    tya
+    and.w #$f03f ~$ffff
+    lsr a
+    bit.w #$20
+    beq +
+      ;upper table
+      clc
+      adc.w #$800
++
+    and.w #$f03f ~$ffff
+    ora 1,s
+    lsr a
+    sta.w VMADDL  
+    pla
+
+    lda.w 0,x
+    sta.w VMDATAL
+
+    iny
+    iny
+    inx
+    inx
+
+    lda 1,s
+    dec a
+    dec a
+    sta 1,s
+    bne -
+
+  pla
+
+  plb
+  rts
+
+
+dmaQueueVramTilelineVerticalTransfer:
+  lda.b dmaQueue.sourceAdress
+  sta.w DMASRC1L
+  lda.b dmaQueue.sourceAdress + 1
+  sta.w DMASRC1H
+
+  lda.b dmaQueue.targetAdress
+  lsr a
+  sta.w VMADDL
+
+  lda.b dmaQueue.transferLength
+  sta.w DMALEN1L
+
+  sep #$20
+  lda.b #(VMAIN_INCREMENT_MODE | VMAIN_INCREMENT_32)
+  sta.w VMAIN
+
+  lda.b #DMAP_2_REG_WRITE_ONCE
+  SET_DMAP_0
+
+  lda.b #VMDATAL & $ff
+  sta.w DMADEST1
+
+  lda.b #DMA_CHANNEL1_ENABLE
+  sta.w MDMAEN
+
+  rep #$31
+  rts
+
+dmaQueueOamTransfer:
+  lda.b dmaQueue.sourceAdress
+  sta.w DMASRC1L
+  lda.b dmaQueue.sourceAdress + 1
+  sta.w DMASRC1H
+
+  lda.b dmaQueue.targetAdress
+  sta.w OAMADDL
+
+  lda.b dmaQueue.transferLength
+  sta.w DMALEN1L
+
+  sep #$20
+  lda.b #DMAP_1_REG_WRITE_ONCE
+  SET_DMAP_0
+
+  lda.b #OAMDATA & $ff
+  sta.w DMADEST1
+
+  lda.b #DMA_CHANNEL1_ENABLE
+  sta.w MDMAEN
+
+  rep #$31
+  rts
+
+dmaQueueCgramTransfer:
+  lda.b dmaQueue.sourceAdress
+  sta.w DMASRC1L
+  lda.b dmaQueue.sourceAdress + 1
+  sta.w DMASRC1H
+
+  lda.b dmaQueue.transferLength
+  sta.w DMALEN1L
+
+  lda.b dmaQueue.targetAdress
+  lsr a
+  sep #$20
+  sta.w CGADD
+  
+  lda.b #DMAP_1_REG_WRITE_ONCE
+  SET_DMAP_0
+
+  lda.b #CGDATA & $ff
+  sta.w DMADEST1
+  
+  ;quick hack to enable dual direction transfers
+  lda.b dmaQueue.transferType
+  bit.b #DMA_TRANSFER.OPTION.REVERSE
+  beq +
+    lda.b #CGDATAREAD & $ff
+    sta.w DMADEST1
+  
++  
+  lda.b #DMA_CHANNEL1_ENABLE
+  sta.w MDMAEN
+
+  rep #$31
+  rts
+
+.ends
+
+.base BSL
+.bank BANK.DATA
+.section "extern.dma" superfree
+.redef STACK_OFFSET 1
+extern.dma.registerTransfer:
+  AX16
+  php
+  phx
+  sei
+  lda.w GLOBAL.currentDmaQueueSlot
+  and.w #(DMA_QUEUE_SLOTS * _sizeof_dmaQueue) - 1
+  tax
+  
+  ldy.w #DMA_QUEUE_SLOTS
+
+  ;seek free queue slot
+- lda.w GLOBAL.dmaQueue.1.transferType,x
+  bit.w #DMA_TRANSFER.OPTION.ACTIVE
+  beq +
+
+  txa
+  clc
+  adc.w #_sizeof_dmaQueue
+  and.w #(DMA_QUEUE_SLOTS * _sizeof_dmaQueue) - 1
+  tax
+  dey
+  bne -
+    plx
+    plp
+    clc
+    rtl
+
+;got free slot, x is pointer to slot
++ lda 13+STACK_OFFSET,s
+  and.w #(DMA_TRANSFER.OPTION.FIXED_SOURCE | DMA_TRANSFER.OPTION.ACTIVE | DMA_TRANSFER.OPTION.REVERSE) ~$ff
+  cmp.w #DMA_TRANSFER.MAX
+  bcc +
+    pha
+    SCRIPT_TRIGGER_ERROR E_InvalidDmaTransferType
+
+
++ 
+
+  lda 9+STACK_OFFSET,s
+  sta.w (GLOBAL.dmaQueue.1.sourceAdress & $ffff) + 1 ,x
+  lda 11+STACK_OFFSET,s
+  sta.w GLOBAL.dmaQueue.1.sourceAdress,x
+
+  lda 8+STACK_OFFSET,s
+  sta.w GLOBAL.dmaQueue.1.targetAdress,x
+  lda 6+STACK_OFFSET,s
+  bne +
+  ;zero length transfer encountered, abort.
+  pha
+    SCRIPT_TRIGGER_ERROR E_InvalidDmaTransferLength
+
+
++ sta.w GLOBAL.dmaQueue.1.transferLength,x  
+
+  clc
+  adc.w GLOBAL.dmaQueueChannel.size.total
+  sta.w GLOBAL.dmaQueueChannel.size.total   ;add total amount of bytes to be transferred for current frame
+
+  ;only mark as active after everything else has been written, else we get bad transfers if nmi/dma queue irq triggers right in the middle of this routine!!
+  ;we could disable nmi altogether while inside this routine, but that'd mean loosing a frame every now and then
+  sep #$20
+  lda 13+STACK_OFFSET,s
+  ora #DMA_TRANSFER.OPTION.ACTIVE
+  sta.w GLOBAL.dmaQueue.1.transferType,x
+
+  plx
+  plp
+  sec
+  rtl
+  
+.ends

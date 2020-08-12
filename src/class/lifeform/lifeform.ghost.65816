@@ -1,0 +1,149 @@
+/**
+* Floating ghost of deceased minibosses that periodically throws fireballs
+* 
+*/
+
+.include "src/class/lifeform/lifeform.ghost.h"
+.section "lifeform.ghost"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta.b dimension.position.x + 1
+
+  lda OBJECT.CALL.ARG.2,s
+  sta.b dimension.position.y + 1
+
+  lda.w #(ANIMATION.FLAGS.CENTER_ON_INIT | ANIMATION.FLAGS.IS_LOOPING)
+  tsb.b animation.flags.static
+
+  lda OBJECT.CALL.ARG.5,s
+  jsr sprite.library.startAnimation.try
+  bcs +
+    ;kill self immediately again if allocation failed
+    jmp _kill
+
+
++
+  lda.w #OAM.PRIORITY.3
+  sta animation.buffer.flags
+
+  lda OBJECT.CALL.ARG.6,s
+  sta this.payload.class
+
+  lda.w #7
+  sta.b animation.speed
+
+  lda.w #VOID
+  sta this.payload.obj
+  sta this.payload.obj+2
+  rts
+
+
+  METHOD play
+  inc this.timer
+
+  lda this.timer
+  and.w #$3f
+  bne +
+    ldx.w #this.payload.obj
+    jsr core.object.exists
+    bcs +
+      lda.w #0
+      jsr sprite.library.setFrame
+
+      lda.w #AUDIO.EFFECT.ROAR
+      jsr interface.dimension.playSoundEffect
+
+      lda.w #$18
+      sta this.throw
+
++
+  lda this.throw
+  beq +
+      dec this.throw
+      bne +
+
+      lda dimension.position.y+1
+      clc
+      adc.w #32
+      pha
+      pei (dimension.position.x+1)
+      jsl extern.level.getCollisionTile
+      plx
+      plx
+      cmp.w #LEVEL.COLLISION.MODE.NONE
+      beq ++
+        ;wait until throwable
+        inc this.throw
+        bra +
+
+++
+      pea 0    
+      pea BERZERK.FULL/8
+      pea 0
+      pea 0
+      lda dimension.position.y+1
+      clc
+      adc.w #32
+      pha
+      pei (dimension.position.x+1)
+      ldy this.payload.class
+      ldx.w #this.payload.obj
+      jsr core.object.create.try
+      pla
+      pla
+      pla
+      pla
+      pla
+      pla
+
+      bcc +
+        lda.w #AUDIO.EFFECT.HIT.KICK
+        jsr interface.dimension.playSoundEffect
+
++  
+  lda this.timer
+  and.w #$ff
+  jsr core.math.cos
+  cmp.w #$8000
+  ror a
+  cmp.w #$8000
+  ror a
+  cmp.w #$8000
+  ror a
+  clc
+  adc.w (GLOBAL.screen.position.y&$ffff)+1
+  clc
+  adc.w #8
+  sta dimension.position.y+1
+
+  lda this.timer
+  and.w #$ff
+  jsr core.math.sin
+  clc
+  adc.w (GLOBAL.screen.position.x&$ffff)+1
+  clc
+  adc.w #105
+  sta dimension.position.x+1
+
+  lda.w FrameCounter
+  ror a
+  bcc +
+    jmp sprite.library.playAnimation
+
++
+  rts    
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+  METHOD oncommand
+  clc
+  rts
+
+  CLASS lifeform.ghost oncommand
+
+.ends	

@@ -1,0 +1,59 @@
+/**
+* Plays palette animation to CGRAM
+*/
+
+.include "src/class/palette/palette.animation.h"
+.section "palette.animation"
+
+  /**
+  * @param arg.1 <int, 16bit>    target animation id
+  * @param arg.2 <int, 16bit>    color start id
+  * @param arg.3 <int, 16bit>    color count
+  * @param arg.4 <int, 16bit>    delay (0=fastest)
+  */
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta palette.animation.id
+
+  lda OBJECT.CALL.ARG.2,s
+  sta palette.color.start
+
+  lda OBJECT.CALL.ARG.3,s
+  sta palette.color.length
+
+  lda OBJECT.CALL.ARG.4,s
+  sta palette.animation.speed
+
+  ;is level member?
+  lda OBJECT.CALL.ARG.5,s
+  beq +
+      lda #OBJECT.PROPERTIES.isLevelMember
+      jsr iterator.library.clearProperties
++
+
+  lda.w #ANIMATION.FLAGS.IS_LOOPING
+  tsb palette.animation.flags
+
+  lda palette.animation.id
+  jmp palette.library.startAnimation
+
+
+  METHOD play
+  jmp palette.library.playAnimation
+
+  METHOD stop
+  jmp palette.library.stopAnimation
+
+  METHOD isDone
+  lda palette.animation.flags
+  bit.w #ANIMATION.FLAGS.IS_PLAYING
+  beq +
+    clc
+    rts
++
+  sec
+  rts
+
+  CLASS palette.animation stop isDone
+
+.ends	

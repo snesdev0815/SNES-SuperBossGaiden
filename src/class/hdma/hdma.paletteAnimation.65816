@@ -1,0 +1,63 @@
+/**
+* HDMA object that plays HDMA palette animation
+* 
+*/
+
+.include "src/class/hdma/hdma.paletteAnimation.h"
+.section "hdma.paletteAnimation"
+
+  /**
+  * @param arg.1 <int, 16bit>    target animation id
+  * @param arg.2 <int, 16bit>    delay (0=fastest)
+  */
+  METHOD init
+  lda OBJECT.CALL.ARG.3,s
+  jsr hdma.library.startAnimation
+
+  lda.w #ANIMATION.FLAGS.IS_LOOPING
+  tsb hdma.animation.flags
+
+  lda OBJECT.CALL.ARG.4,s
+  sta hdma.animation.speed
+
+  sep #$20
+
+  lda hdma.flags
+  ora #DMAP_2_REG_WRITE_TWICE_EACH
+  sta hdma.flags
+
+  lda #CGADD & $ff
+  sta hdma.target
+  rep #$31
+
+  jmp hdma.library.start
+
+  METHOD play
+  jmp hdma.library.playAnimation
+
+  METHOD stop
+  jmp hdma.library.stopAnimation
+
+  METHOD getFrame
+  lda hdma.animation.frame.current
+  rts
+
+  METHOD setFrame
+  jmp hdma.library.setFrame
+
+  METHOD kill
+  jmp hdma.library.kill
+
+  METHOD disable
+  jmp hdma.library.disable
+
+  METHOD enable
+  jmp hdma.library.enable
+
+  METHOD setProperties
+  sta.b iterator.properties
+  rts
+
+  CLASS hdma.paletteAnimation stop setFrame getFrame setProperties
+.ends	
+	

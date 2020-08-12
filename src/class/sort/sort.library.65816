@@ -1,0 +1,129 @@
+/**
+* object bubble sorter, built upon iterator structure.
+*
+* sorts objects byProperty or byId according to one of their word-sized zero-page variables
+* warning: currently objects are sorted while executing object methods! This means that you must make sure sort doesnt get called on objects that are currently executing(self or any object in caller chain of self)!
+* warning: will reset Iterator counter
+*
+* -first, we determine the amount of matching objects to get required loop count
+* 	-there, we also push all the found targets on the stack
+*/
+.include "src/class/sort/sort.library.h"
+.section "sort"
+
+  
+/**
+* searches for next object matching requested properties. if found, writes target object hash to iterator.target of callee
+*
+* @param a<int, 16bit>   target object properties. Object must satisfy requested properties to trigger match
+* @param x <int, 16bit> lower byte: direct-page variable word to compare against. msb=reverse order if set
+*/
+sort.library.reverse.byProperties:
+  AX16
+  stx.w GLOBAL.iterator.sort.key
+  sta iterator.sort.target
+  
+  tsc
+  sta.w GLOBAL.iterator.sort.stack
+  
+  ;find all matching objects and put them on the stack
+  jsr iterator.library.reset
+-   lda iterator.sort.target
+    jsl extern.iterator.each.byProperties
+
+    bcc +
+    lda iterator.target+3
+    and.w #$ff
+    asl a
+    asl a
+    asl a
+    asl a
+    tay
+    tax
+    lda.l OopStack.dp,x
+    clc
+    adc.w GLOBAL.iterator.sort.key   ;no boundary checking here! If variable key adress is > objects zp-page, this might spill over into other objects!
+    tax
+    lda.w 0,x ;get 8bit key
+    and.w #$ff    
+    pha
+    phy
+    bra -
+
++
+  
+  ;get bytelength of pushed objects
+  lda iterator.count
+  cmp #2
+  bcc ++
+    sta.w GLOBAL.iterator.sort.count
+--
+      tsx
+      lda.w #1
+      sta.w GLOBAL.iterator.sort.counter
+      stz.w GLOBAL.iterator.sort.dirty
+
+        ;loop through all pushed objects, compare two at a time
+-     
+        lda.w 1+0+2,x
+        cmp.w 1+4+2,x
+        beq +
+        bcs +
+          jsr _swap
+
++
+        inx
+        inx
+        inx
+        inx
+        inc.w GLOBAL.iterator.sort.counter
+        lda.w GLOBAL.iterator.sort.counter
+        cmp.w GLOBAL.iterator.sort.count
+        bcc -
+
+        ;list already sorted? skip remaining loops
+        lda.w GLOBAL.iterator.sort.dirty
+        beq ++
+
+      dec.w GLOBAL.iterator.sort.count
+      bne --
+      
+++
+  lda.w GLOBAL.iterator.sort.stack
+  tcs
+  rts
+
+
+_swap:
+  AX16
+  ;swap list values aswell
+  tay
+  lda.w 1+4+2,x
+  sta.w 1+0+2,x
+  tya
+  sta.w 1+4+2,x
+
+  phx
+
+  lda.w 1+0,x
+  tay
+  lda.w 1+4,x
+  tax
+
+.redef COUNTER 0
+.rept $8
+    lda.w (OopStack&$ffff)+(COUNTER*2),x
+    pha
+    lda.w (OopStack&$ffff)+(COUNTER*2),y
+    sta.w (OopStack&$ffff)+(COUNTER*2),x
+    pla
+    sta.w (OopStack&$ffff)+(COUNTER*2),y
+
+.redef COUNTER COUNTER+1
+.endr
+  plx
+  lda.w #TRUE
+  tsb.w GLOBAL.iterator.sort.dirty
+  rts
+  
+.ends

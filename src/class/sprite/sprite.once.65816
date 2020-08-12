@@ -1,0 +1,64 @@
+/**
+* Generic sprite killed upon completing animation once.
+*
+*/
+
+.include "src/class/sprite/sprite.once.h"
+.section "sprite.once"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta.b dimension.position.x + 1
+
+  lda OBJECT.CALL.ARG.2,s
+  sta.b dimension.position.y + 1
+
+  lda OBJECT.CALL.ARG.3,s
+  sta.b this.currentAnimation
+
+  lda.w #OAM.PRIORITY.3
+  sta animation.buffer.flags
+
+  lda OBJECT.CALL.ARG.5,s
+  and.w #(ANIMATION.FLAGS.IS_LOOPING | ANIMATION.FLAGS.STATIC.PALETTES | ANIMATION.FLAGS.STATIC.TILES | ANIMATION.FLAGS.UPLOADED.PALETTES | ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.UPLOADED.TILES_BIG | ANIMATION.FLAGS.ANY.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES | ANIMATION.FLAGS.UPLOADED.TILEMAP | ANIMATION.FLAGS.IS_PLAYING) ~$ffff
+  tsb.b animation.flags.static
+
+  lda this.currentAnimation
+  jsr sprite.library.startAnimation.try
+  bcs +
+    jmp _kill
+
+
++
+
+  lda OBJECT.CALL.ARG.4,s
+  sta.b animation.speed
+  rts
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD play
+  jsr sprite.library.playAnimation
+
+  ;kill after animation has completed.
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.IS_PLAYING
+  bne +
+    bra _kill
+
++
+  rts
+
+  METHOD disable
+  jmp sprite.library.disable
+
+  METHOD enable
+  jmp sprite.library.enable
+  
+  METHOD kill
+  jmp sprite.library.kill
+
+  CLASS sprite.once
+.ends	
+	

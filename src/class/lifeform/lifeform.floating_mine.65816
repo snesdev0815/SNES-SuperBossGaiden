@@ -1,0 +1,86 @@
+/**
+* Spiky mine enemy that floats up and down in the air.
+* 
+*/
+.include "src/class/lifeform/lifeform.floating_mine.h"
+.section "lifeform.floating_mine"
+
+  METHOD init
+  lda.w #SPRITE.spiked_mine.PTR
+  ldx.w #0
+  jsl extern.lifeform.initialize
+
+  lda.b dimension.position.y + 1
+  sta this.position.original.y
+  
+  sep #$20
+  lda #LIFEFORM.STATE.FLYING
+  sta lifeform.state
+  rep #$31
+  rts  
+
+
+  METHOD play
+  ;if being thrown (e.g. by last boss), die after some time
+  lda this.deathTimer
+  beq +
+    dec this.deathTimer
+    bne +
+      jsl extern.movement.explodeEnemy
+      rts
+
++
+  lda lifeform.state
+  and.w #$ff
+  cmp.w #LIFEFORM.STATE.FLYING
+  bne +
+    lda.w FrameCounter
+    asl a
+    and.w #$ff
+    jsr core.math.sin
+    cmp.w #$8000
+    ror a
+    clc
+    adc this.position.original.y
+    sta dimension.position.y + 1
+
++
+  jsl extern.lifeform.evalOffscreen
+  rts
+
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +  
+    lda.w #AUDIO.EFFECT.BLOCK
+    jsr interface.dimension.playSoundEffect
+    clc
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.THROW
+  bne +
+    lda.w #SPIKED_MINE.DEATH.TIMER
+    sta this.deathTimer
+    jsl extern.lifeform.onThrow
+    sec
+    rts
+
++
+  clc
+  rts
+
+
+  CLASS lifeform.floating_mine oncommand
+
+.ends	
+	

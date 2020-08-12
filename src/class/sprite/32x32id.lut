@@ -1,0 +1,303 @@
+sprite32x32id.lut:
+; main  0:
+.dw $0 ;main  0, sub  0, target    0, target row  0 old  0
+.dw $4 ;main  0, sub  1, target    4, target row  0 old  0
+.dw $8 ;main  0, sub  2, target    8, target row  0 old  0
+.dw $c ;main  0, sub  3, target    c, target row  0 old  0
+.dw $40 ;main  0, sub  4, target   40, target row  1 old  0
+.dw $44 ;main  0, sub  5, target   44, target row  4 old  4
+.dw $48 ;main  0, sub  6, target   48, target row  4 old  4
+.dw $4c ;main  0, sub  7, target   4c, target row  4 old  4
+.dw $80 ;main  0, sub  8, target   80, target row  5 old  4
+.dw $84 ;main  0, sub  9, target   84, target row  8 old  8
+.dw $88 ;main  0, sub  a, target   88, target row  8 old  8
+.dw $8c ;main  0, sub  b, target   8c, target row  8 old  8
+.dw $c0 ;main  0, sub  c, target   c0, target row  9 old  8
+.dw $c4 ;main  0, sub  d, target   c4, target row  c old  c
+.dw $c8 ;main  0, sub  e, target   c8, target row  c old  c
+.dw $cc ;main  0, sub  f, target   cc, target row  c old  c
+
+
+; main  4:
+.dw $0 ;main  4, sub  0, target    4, target row  0 old  0
+.dw $4 ;main  4, sub  1, target    8, target row  0 old  0
+.dw $8 ;main  4, sub  2, target    c, target row  0 old  0
+.dw $3c ;main  4, sub  3, target   40, target row  1 old  0
+.dw $40 ;main  4, sub  4, target   44, target row  4 old  4
+.dw $44 ;main  4, sub  5, target   48, target row  4 old  4
+.dw $48 ;main  4, sub  6, target   4c, target row  4 old  4
+.dw $7c ;main  4, sub  7, target   80, target row  5 old  4
+.dw $80 ;main  4, sub  8, target   84, target row  8 old  8
+.dw $84 ;main  4, sub  9, target   88, target row  8 old  8
+.dw $88 ;main  4, sub  a, target   8c, target row  8 old  8
+.dw $bc ;main  4, sub  b, target   c0, target row  9 old  8
+.dw $c0 ;main  4, sub  c, target   c4, target row  c old  c
+.dw $c4 ;main  4, sub  d, target   c8, target row  c old  c
+.dw $c8 ;main  4, sub  e, target   cc, target row  c old  c
+.dw $fc ;main  4, sub  f, target  100, target row  d old  c
+
+
+; main  8:
+.dw $0 ;main  8, sub  0, target    8, target row  0 old  0
+.dw $4 ;main  8, sub  1, target    c, target row  0 old  0
+.dw $38 ;main  8, sub  2, target   40, target row  1 old  0
+.dw $3c ;main  8, sub  3, target   44, target row  4 old  4
+.dw $40 ;main  8, sub  4, target   48, target row  4 old  4
+.dw $44 ;main  8, sub  5, target   4c, target row  4 old  4
+.dw $78 ;main  8, sub  6, target   80, target row  5 old  4
+.dw $7c ;main  8, sub  7, target   84, target row  8 old  8
+.dw $80 ;main  8, sub  8, target   88, target row  8 old  8
+.dw $84 ;main  8, sub  9, target   8c, target row  8 old  8
+.dw $b8 ;main  8, sub  a, target   c0, target row  9 old  8
+.dw $bc ;main  8, sub  b, target   c4, target row  c old  c
+.dw $c0 ;main  8, sub  c, target   c8, target row  c old  c
+.dw $c4 ;main  8, sub  d, target   cc, target row  c old  c
+.dw $f8 ;main  8, sub  e, target  100, target row  d old  c
+.dw $fc ;main  8, sub  f, target  104, target row 10 old 10
+
+
+; main  c:
+.dw $0 ;main  c, sub  0, target    c, target row  0 old  0
+.dw $34 ;main  c, sub  1, target   40, target row  1 old  0
+.dw $38 ;main  c, sub  2, target   44, target row  4 old  4
+.dw $3c ;main  c, sub  3, target   48, target row  4 old  4
+.dw $40 ;main  c, sub  4, target   4c, target row  4 old  4
+.dw $74 ;main  c, sub  5, target   80, target row  5 old  4
+.dw $78 ;main  c, sub  6, target   84, target row  8 old  8
+.dw $7c ;main  c, sub  7, target   88, target row  8 old  8
+.dw $80 ;main  c, sub  8, target   8c, target row  8 old  8
+.dw $b4 ;main  c, sub  9, target   c0, target row  9 old  8
+.dw $b8 ;main  c, sub  a, target   c4, target row  c old  c
+.dw $bc ;main  c, sub  b, target   c8, target row  c old  c
+.dw $c0 ;main  c, sub  c, target   cc, target row  c old  c
+.dw $f4 ;main  c, sub  d, target  100, target row  d old  c
+.dw $f8 ;main  c, sub  e, target  104, target row 10 old 10
+.dw $fc ;main  c, sub  f, target  108, target row 10 old 10
+
+
+; main 10:
+.dw $0 ;main 10, sub  0, target   10, target row  0 old  0
+.dw $4 ;main 10, sub  1, target   14, target row  1 old  1
+.dw $8 ;main 10, sub  2, target   18, target row  1 old  1
+.dw $c ;main 10, sub  3, target   1c, target row  1 old  1
+.dw $40 ;main 10, sub  4, target   50, target row  2 old  1
+.dw $44 ;main 10, sub  5, target   54, target row  5 old  5
+.dw $48 ;main 10, sub  6, target   58, target row  5 old  5
+.dw $4c ;main 10, sub  7, target   5c, target row  5 old  5
+.dw $80 ;main 10, sub  8, target   90, target row  6 old  5
+.dw $84 ;main 10, sub  9, target   94, target row  9 old  9
+.dw $88 ;main 10, sub  a, target   98, target row  9 old  9
+.dw $8c ;main 10, sub  b, target   9c, target row  9 old  9
+.dw $c0 ;main 10, sub  c, target   d0, target row  a old  9
+.dw $c4 ;main 10, sub  d, target   d4, target row  d old  d
+.dw $c8 ;main 10, sub  e, target   d8, target row  d old  d
+.dw $cc ;main 10, sub  f, target   dc, target row  d old  d
+
+
+; main 14:
+.dw $0 ;main 14, sub  0, target   14, target row  0 old  0
+.dw $4 ;main 14, sub  1, target   18, target row  1 old  1
+.dw $8 ;main 14, sub  2, target   1c, target row  1 old  1
+.dw $3c ;main 14, sub  3, target   50, target row  2 old  1
+.dw $40 ;main 14, sub  4, target   54, target row  5 old  5
+.dw $44 ;main 14, sub  5, target   58, target row  5 old  5
+.dw $48 ;main 14, sub  6, target   5c, target row  5 old  5
+.dw $7c ;main 14, sub  7, target   90, target row  6 old  5
+.dw $80 ;main 14, sub  8, target   94, target row  9 old  9
+.dw $84 ;main 14, sub  9, target   98, target row  9 old  9
+.dw $88 ;main 14, sub  a, target   9c, target row  9 old  9
+.dw $bc ;main 14, sub  b, target   d0, target row  a old  9
+.dw $c0 ;main 14, sub  c, target   d4, target row  d old  d
+.dw $c4 ;main 14, sub  d, target   d8, target row  d old  d
+.dw $c8 ;main 14, sub  e, target   dc, target row  d old  d
+.dw $fc ;main 14, sub  f, target  110, target row  e old  d
+
+
+; main 18:
+.dw $0 ;main 18, sub  0, target   18, target row  0 old  0
+.dw $4 ;main 18, sub  1, target   1c, target row  1 old  1
+.dw $38 ;main 18, sub  2, target   50, target row  2 old  1
+.dw $3c ;main 18, sub  3, target   54, target row  5 old  5
+.dw $40 ;main 18, sub  4, target   58, target row  5 old  5
+.dw $44 ;main 18, sub  5, target   5c, target row  5 old  5
+.dw $78 ;main 18, sub  6, target   90, target row  6 old  5
+.dw $7c ;main 18, sub  7, target   94, target row  9 old  9
+.dw $80 ;main 18, sub  8, target   98, target row  9 old  9
+.dw $84 ;main 18, sub  9, target   9c, target row  9 old  9
+.dw $b8 ;main 18, sub  a, target   d0, target row  a old  9
+.dw $bc ;main 18, sub  b, target   d4, target row  d old  d
+.dw $c0 ;main 18, sub  c, target   d8, target row  d old  d
+.dw $c4 ;main 18, sub  d, target   dc, target row  d old  d
+.dw $f8 ;main 18, sub  e, target  110, target row  e old  d
+.dw $fc ;main 18, sub  f, target  114, target row 11 old 11
+
+
+; main 1c:
+.dw $0 ;main 1c, sub  0, target   1c, target row  0 old  0
+.dw $34 ;main 1c, sub  1, target   50, target row  2 old  1
+.dw $38 ;main 1c, sub  2, target   54, target row  5 old  5
+.dw $3c ;main 1c, sub  3, target   58, target row  5 old  5
+.dw $40 ;main 1c, sub  4, target   5c, target row  5 old  5
+.dw $74 ;main 1c, sub  5, target   90, target row  6 old  5
+.dw $78 ;main 1c, sub  6, target   94, target row  9 old  9
+.dw $7c ;main 1c, sub  7, target   98, target row  9 old  9
+.dw $80 ;main 1c, sub  8, target   9c, target row  9 old  9
+.dw $b4 ;main 1c, sub  9, target   d0, target row  a old  9
+.dw $b8 ;main 1c, sub  a, target   d4, target row  d old  d
+.dw $bc ;main 1c, sub  b, target   d8, target row  d old  d
+.dw $c0 ;main 1c, sub  c, target   dc, target row  d old  d
+.dw $f4 ;main 1c, sub  d, target  110, target row  e old  d
+.dw $f8 ;main 1c, sub  e, target  114, target row 11 old 11
+.dw $fc ;main 1c, sub  f, target  118, target row 11 old 11
+
+
+; main 20:
+.dw $0 ;main 20, sub  0, target   20, target row  0 old  0
+.dw $4 ;main 20, sub  1, target   24, target row  2 old  2
+.dw $8 ;main 20, sub  2, target   28, target row  2 old  2
+.dw $c ;main 20, sub  3, target   2c, target row  2 old  2
+.dw $40 ;main 20, sub  4, target   60, target row  3 old  2
+.dw $44 ;main 20, sub  5, target   64, target row  6 old  6
+.dw $48 ;main 20, sub  6, target   68, target row  6 old  6
+.dw $4c ;main 20, sub  7, target   6c, target row  6 old  6
+.dw $80 ;main 20, sub  8, target   a0, target row  7 old  6
+.dw $84 ;main 20, sub  9, target   a4, target row  a old  a
+.dw $88 ;main 20, sub  a, target   a8, target row  a old  a
+.dw $8c ;main 20, sub  b, target   ac, target row  a old  a
+.dw $c0 ;main 20, sub  c, target   e0, target row  b old  a
+.dw $c4 ;main 20, sub  d, target   e4, target row  e old  e
+.dw $c8 ;main 20, sub  e, target   e8, target row  e old  e
+.dw $cc ;main 20, sub  f, target   ec, target row  e old  e
+
+
+; main 24:
+.dw $0 ;main 24, sub  0, target   24, target row  0 old  0
+.dw $4 ;main 24, sub  1, target   28, target row  2 old  2
+.dw $8 ;main 24, sub  2, target   2c, target row  2 old  2
+.dw $3c ;main 24, sub  3, target   60, target row  3 old  2
+.dw $40 ;main 24, sub  4, target   64, target row  6 old  6
+.dw $44 ;main 24, sub  5, target   68, target row  6 old  6
+.dw $48 ;main 24, sub  6, target   6c, target row  6 old  6
+.dw $7c ;main 24, sub  7, target   a0, target row  7 old  6
+.dw $80 ;main 24, sub  8, target   a4, target row  a old  a
+.dw $84 ;main 24, sub  9, target   a8, target row  a old  a
+.dw $88 ;main 24, sub  a, target   ac, target row  a old  a
+.dw $bc ;main 24, sub  b, target   e0, target row  b old  a
+.dw $c0 ;main 24, sub  c, target   e4, target row  e old  e
+.dw $c4 ;main 24, sub  d, target   e8, target row  e old  e
+.dw $c8 ;main 24, sub  e, target   ec, target row  e old  e
+.dw $fc ;main 24, sub  f, target  120, target row  f old  e
+
+
+; main 28:
+.dw $0 ;main 28, sub  0, target   28, target row  0 old  0
+.dw $4 ;main 28, sub  1, target   2c, target row  2 old  2
+.dw $38 ;main 28, sub  2, target   60, target row  3 old  2
+.dw $3c ;main 28, sub  3, target   64, target row  6 old  6
+.dw $40 ;main 28, sub  4, target   68, target row  6 old  6
+.dw $44 ;main 28, sub  5, target   6c, target row  6 old  6
+.dw $78 ;main 28, sub  6, target   a0, target row  7 old  6
+.dw $7c ;main 28, sub  7, target   a4, target row  a old  a
+.dw $80 ;main 28, sub  8, target   a8, target row  a old  a
+.dw $84 ;main 28, sub  9, target   ac, target row  a old  a
+.dw $b8 ;main 28, sub  a, target   e0, target row  b old  a
+.dw $bc ;main 28, sub  b, target   e4, target row  e old  e
+.dw $c0 ;main 28, sub  c, target   e8, target row  e old  e
+.dw $c4 ;main 28, sub  d, target   ec, target row  e old  e
+.dw $f8 ;main 28, sub  e, target  120, target row  f old  e
+.dw $fc ;main 28, sub  f, target  124, target row 12 old 12
+
+
+; main 2c:
+.dw $0 ;main 2c, sub  0, target   2c, target row  0 old  0
+.dw $34 ;main 2c, sub  1, target   60, target row  3 old  2
+.dw $38 ;main 2c, sub  2, target   64, target row  6 old  6
+.dw $3c ;main 2c, sub  3, target   68, target row  6 old  6
+.dw $40 ;main 2c, sub  4, target   6c, target row  6 old  6
+.dw $74 ;main 2c, sub  5, target   a0, target row  7 old  6
+.dw $78 ;main 2c, sub  6, target   a4, target row  a old  a
+.dw $7c ;main 2c, sub  7, target   a8, target row  a old  a
+.dw $80 ;main 2c, sub  8, target   ac, target row  a old  a
+.dw $b4 ;main 2c, sub  9, target   e0, target row  b old  a
+.dw $b8 ;main 2c, sub  a, target   e4, target row  e old  e
+.dw $bc ;main 2c, sub  b, target   e8, target row  e old  e
+.dw $c0 ;main 2c, sub  c, target   ec, target row  e old  e
+.dw $f4 ;main 2c, sub  d, target  120, target row  f old  e
+.dw $f8 ;main 2c, sub  e, target  124, target row 12 old 12
+.dw $fc ;main 2c, sub  f, target  128, target row 12 old 12
+
+
+; main 30:
+.dw $0 ;main 30, sub  0, target   30, target row  0 old  0
+.dw $4 ;main 30, sub  1, target   34, target row  3 old  3
+.dw $8 ;main 30, sub  2, target   38, target row  3 old  3
+.dw $c ;main 30, sub  3, target   3c, target row  3 old  3
+.dw $40 ;main 30, sub  4, target   70, target row  4 old  3
+.dw $44 ;main 30, sub  5, target   74, target row  7 old  7
+.dw $48 ;main 30, sub  6, target   78, target row  7 old  7
+.dw $4c ;main 30, sub  7, target   7c, target row  7 old  7
+.dw $80 ;main 30, sub  8, target   b0, target row  8 old  7
+.dw $84 ;main 30, sub  9, target   b4, target row  b old  b
+.dw $88 ;main 30, sub  a, target   b8, target row  b old  b
+.dw $8c ;main 30, sub  b, target   bc, target row  b old  b
+.dw $c0 ;main 30, sub  c, target   f0, target row  c old  b
+.dw $c4 ;main 30, sub  d, target   f4, target row  f old  f
+.dw $c8 ;main 30, sub  e, target   f8, target row  f old  f
+.dw $cc ;main 30, sub  f, target   fc, target row  f old  f
+
+
+; main 34:
+.dw $0 ;main 34, sub  0, target   34, target row  0 old  0
+.dw $4 ;main 34, sub  1, target   38, target row  3 old  3
+.dw $8 ;main 34, sub  2, target   3c, target row  3 old  3
+.dw $3c ;main 34, sub  3, target   70, target row  4 old  3
+.dw $40 ;main 34, sub  4, target   74, target row  7 old  7
+.dw $44 ;main 34, sub  5, target   78, target row  7 old  7
+.dw $48 ;main 34, sub  6, target   7c, target row  7 old  7
+.dw $7c ;main 34, sub  7, target   b0, target row  8 old  7
+.dw $80 ;main 34, sub  8, target   b4, target row  b old  b
+.dw $84 ;main 34, sub  9, target   b8, target row  b old  b
+.dw $88 ;main 34, sub  a, target   bc, target row  b old  b
+.dw $bc ;main 34, sub  b, target   f0, target row  c old  b
+.dw $c0 ;main 34, sub  c, target   f4, target row  f old  f
+.dw $c4 ;main 34, sub  d, target   f8, target row  f old  f
+.dw $c8 ;main 34, sub  e, target   fc, target row  f old  f
+.dw $fc ;main 34, sub  f, target  130, target row 10 old  f
+
+
+; main 38:
+.dw $0 ;main 38, sub  0, target   38, target row  0 old  0
+.dw $4 ;main 38, sub  1, target   3c, target row  3 old  3
+.dw $38 ;main 38, sub  2, target   70, target row  4 old  3
+.dw $3c ;main 38, sub  3, target   74, target row  7 old  7
+.dw $40 ;main 38, sub  4, target   78, target row  7 old  7
+.dw $44 ;main 38, sub  5, target   7c, target row  7 old  7
+.dw $78 ;main 38, sub  6, target   b0, target row  8 old  7
+.dw $7c ;main 38, sub  7, target   b4, target row  b old  b
+.dw $80 ;main 38, sub  8, target   b8, target row  b old  b
+.dw $84 ;main 38, sub  9, target   bc, target row  b old  b
+.dw $b8 ;main 38, sub  a, target   f0, target row  c old  b
+.dw $bc ;main 38, sub  b, target   f4, target row  f old  f
+.dw $c0 ;main 38, sub  c, target   f8, target row  f old  f
+.dw $c4 ;main 38, sub  d, target   fc, target row  f old  f
+.dw $f8 ;main 38, sub  e, target  130, target row 10 old  f
+.dw $fc ;main 38, sub  f, target  134, target row 13 old 13
+
+
+; main 3c:
+.dw $0 ;main 3c, sub  0, target   3c, target row  0 old  0
+.dw $34 ;main 3c, sub  1, target   70, target row  4 old  3
+.dw $38 ;main 3c, sub  2, target   74, target row  7 old  7
+.dw $3c ;main 3c, sub  3, target   78, target row  7 old  7
+.dw $40 ;main 3c, sub  4, target   7c, target row  7 old  7
+.dw $74 ;main 3c, sub  5, target   b0, target row  8 old  7
+.dw $78 ;main 3c, sub  6, target   b4, target row  b old  b
+.dw $7c ;main 3c, sub  7, target   b8, target row  b old  b
+.dw $80 ;main 3c, sub  8, target   bc, target row  b old  b
+.dw $b4 ;main 3c, sub  9, target   f0, target row  c old  b
+.dw $b8 ;main 3c, sub  a, target   f4, target row  f old  f
+.dw $bc ;main 3c, sub  b, target   f8, target row  f old  f
+.dw $c0 ;main 3c, sub  c, target   fc, target row  f old  f
+.dw $f4 ;main 3c, sub  d, target  130, target row 10 old  f
+.dw $f8 ;main 3c, sub  e, target  134, target row 13 old 13
+.dw $fc ;main 3c, sub  f, target  138, target row 13 old 13

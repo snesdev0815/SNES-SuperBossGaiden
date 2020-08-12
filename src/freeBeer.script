@@ -1,0 +1,29 @@
+/**
+* Cutscene where minibosses send a torrent of employees towards
+*
+*/
+
+  SCRIPT freeBeer
+
+  .redef obj.script.slave hashPtr.1
+
+  .redef obj.hud this._tmp
+  
+	SET_CUTSCENE_OPTIONAL
+
+  SCRIPT_JSR core.audio.stopSong
+
+  HUD_DISABLE obj.hud
+  
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.thisIsManagement text.dialogue.freeBeerAvailable FALSE
+  WAIT_FOR obj.script.slave
+
+  lda.w #Song.stage4.PTR
+  SCRIPT_JSR core.audio.playSong
+
+  CUTSCENE_WAIT
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.comingInDroves FALSE
+  WAIT_FOR obj.script.slave
+  HUD_ENABLE obj.hud
+
+  DIE

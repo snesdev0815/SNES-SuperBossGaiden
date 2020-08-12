@@ -1,0 +1,104 @@
+/**
+* A generic background layer that can display animations or still images
+*
+*/
+
+.include "src/class/background/background.generic.h"
+.section "background.generic"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta.b this.bg
+
+  lda.w #ANIMATION.FLAGS.POSITION_ABSOLUTE
+  tsb animation.flags.static
+
+  lda OBJECT.CALL.ARG.3,s
+  bit.w #TRUE
+  beq +
+    lda.w #BG.FORMAT.PRIORITY
+    sta animation.buffer.flags
+
++  
+
+  lda OBJECT.CALL.ARG.2,s
+  jsr background.library.startAnimation
+
+  sep #$20
+  lda #$7f
+  sta.b animation.speed
+  rep #$31
+
+  jsr background.library.allocateMemory
+  
+  lda.b this.bg
+  jsr background.library.makePhysical
+
+  ;play once to upload data
+  jmp background.library.playAnimation
+
+
+  METHOD play
+  jsr background.library.playAnimation
+  lda.b this.bg
+  jmp background.library.updateScroll
+
+  METHOD stop
+  jmp background.library.stopAnimation
+
+  /**
+  * @param 1 <int,16bit>    frame id
+  */
+  METHOD setFrame
+  lda OBJECT.CALL.ARG.1,s
+  sta animation.frame.current
+  
+  ;force refresh
+  lda #$ff
+  sta animation.frame.last
+  jmp background.library.displayCurrentFrame
+
+  METHOD getFrame
+  lda animation.frame.current
+  rts
+
+
+  METHOD kill
+  lda this.bg
+  jmp background.library.kill
+
+
+  METHOD getAllocatedPalette
+  ldx.b animation.palette.start
+  ldy.b animation.palette.length
+  lda.b animation.palette.id
+  and.w #$ff
+  clc
+  beq +
+    sec
+
++ rts
+
+
+  METHOD setPriority
+  stz animation.buffer.flags
+  bit.w #TRUE
+  beq +
+    lda.w #BG.FORMAT.PRIORITY
+    sta animation.buffer.flags
+
++  
+  rts
+
+  METHOD setFlags
+  sta animation.flags.static
+  lda.b this.bg
+  jmp background.library.makePhysical
+
+  METHOD startAnimation
+  lda OBJECT.CALL.ARG.1,s
+  jmp background.library.startAnimation
+  
+  CLASS background.generic getAllocatedPalette stop setFrame getFrame setPriority startAnimation setFlags
+
+.ends	

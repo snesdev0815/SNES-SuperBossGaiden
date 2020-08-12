@@ -1,0 +1,311 @@
+/**
+* Helper functions for CGRAM palette animations
+*
+*/
+
+.include "src/class/palette/palette.library.h"
+.section "palette.library"
+
+/**
+* pull designated palette from cgram into wram buffer. If you call this in your objects init routine, it should be ready by the time its play routine is executed for the first time
+* 
+* @param a <int,16bit>  palette allocation length multiplier
+*/
+palette.library.init:
+  php
+  rep #$31
+  pha
+
+  ;allocate wram buffer for palette
+  lda.b palette.color.length
+  asl a
+  tax
+  lda 1,s
+  jsr core.math.mul
+  sta.b palette.ramBuffer.length
+  tax
+
+  jsr core.wram.allocate
+  bcs +
+      pei (palette.ramBuffer.length)
+      TRIGGER_ERROR E_OutOfWram
+
++ stx.b palette.ramBuffer.start
+  sep #$20
+  sta.b palette.ramBuffer.id
+  rep #$31
+
+  pla
+  plp
+  rts
+
+palette.library.fetch:
+  php
+  rep #$31
+  tsx
+  lda.w #GLOBAL.wramBuffer.start
+  clc
+  adc.b palette.ramBuffer.start
+  tay
+
+  sep #$20
+  lda #(DMA_TRANSFER.CGRAM | DMA_TRANSFER.OPTION.REVERSE)   ;transfer type
+  pha
+  phy
+  lda.b #RAM        ;source bank
+
+  pha
+  rep #$31
+  lda palette.color.start
+  asl a
+  pha
+
+  lda palette.color.length
+  asl a
+  pha  
+
+  jsr core.dma.registerTransfer
+  bcs +
+    txs
+    plp
+    clc
+    rts
++  
+  txs
+  plp
+  sec
+  rts
+
+
+/**
+* upload palette from buffer to cgram
+*/
+palette.library.flush:
+  php
+  rep #$31
+  tsx
+  lda.w #GLOBAL.wramBuffer.start
+  clc
+  adc.b palette.ramBuffer.start
+  tay
+
+  sep #$20
+  lda #DMA_TRANSFER.CGRAM   ;transfer type
+  pha
+  phy
+  lda.b #RAM        ;source bank
+
+  pha
+  rep #$31
+  lda palette.color.start
+  asl a
+  pha
+  lda palette.color.length
+  asl a
+  pha
+
+  jsr core.dma.registerTransfer
+  txs
+  plp
+  rts
+
+
+
+palette.library.deallocate:
+  AX16
+  lda.b palette.ramBuffer.id
+  beq +
+    jsl extend.wram.deallocate
++
+  rts
+
+/**
+* start palette animation
+*
+* @param a<int, 16bit>  animation id, @see PaletteAnimationLUT.
+*
+* @return c<bool>   true if init ok.
+*/
+palette.library.startAnimation:
+  php
+  rep #$31
+
+  ;init some vars
+  and.w #$ff
+  sta.b palette.animation.id
+  asl a
+  adc.b palette.animation.id
+  tax
+  lda.l PaletteAnimationLUT,x
+  sta.b palette.animation.pointer
+  lda.l PaletteAnimationLUT + 1,x
+  sta.b palette.animation.pointer + 1
+
+  ;check animation header magic
+  ldy.w #PALETTE_ANIMATION.MAGIC
+  lda.b [palette.animation.pointer], y
+  cmp.w #PALETTE_ANIMATION.MAGIC.VALUE
+  beq +
+    pei (palette.animation.id)
+    TRIGGER_ERROR E_BadPaletteAnimation
+
++
+
+  ldy.w #PALETTE_ANIMATION.MAX.FRAMES
+  lda.b [palette.animation.pointer], y
+  sta.b palette.animation.frame.max
+
+  ldy.w #PALETTE_ANIMATION.MAX.LENGTH
+  lda.b [palette.animation.pointer], y
+  sta.b palette.animation.length.max
+
+  ldy.w #PALETTE_ANIMATION.LOOPSTART
+  lda.b [palette.animation.pointer], y
+  sta.b palette.animation.frame.loopstart
+
+  ;fetch animation config
+  lda.w #ANIMATION.FLAGS.IS_PLAYING
+  tsb palette.animation.flags
+
+  stz.b palette.animation.frame.current
+
+  stz.b palette.animation.frame.current
+  stz.b palette.animation.frame.last
+  dec.b palette.animation.frame.last
+
+  plp
+  sec
+  rts
+
+palette.library.stopAnimation:
+  php
+  rep #$31
+  lda.w #ANIMATION.FLAGS.IS_PLAYING
+  trb palette.animation.flags
+
+  plp
+  rts
+
+
+palette.library.playAnimation:
+  php
+  rep #$31
+
+  jsr _setupCurrentFrame
+  jsr _advanceFramePointer
+
+  plp
+  rts
+
+
+_setupCurrentFrame:
+  php
+  sep #$20
+  inc palette.animation.timer
+  rep #$31
+  
+  jsr _setupFramePointer
+  jsr palette.library.uploadCurrentFrame
+
+  plp
+  rts
+
+palette.library.uploadCurrentFrame:
+  php
+  rep #$31
+  lda.b palette.animation.frame.current
+  cmp.b palette.animation.frame.last
+  beq +
+    tsx
+
+    ldy.b palette.animation.frame.pointer
+
+    sep #$20
+    lda #DMA_TRANSFER.CGRAM       ;transfer type
+    pha
+    phy
+    lda.b palette.animation.frame.pointer+2               ;source bank
+    pha
+    rep #$31
+
+    lda palette.color.start
+    asl a
+    pha
+    lda palette.color.length
+    asl a
+    pha
+
+    jsr core.dma.registerTransfer
+    txs
+
+    ;only clear uploaded flag after data has actually been uploaded
+    lda.b palette.animation.frame.current
+    sta.b palette.animation.frame.last
+
++
+
+  plp
+  rts
+
+_advanceFramePointer:
+  php
+  rep #$31
+
+  lda palette.animation.flags
+  bit.w #ANIMATION.FLAGS.IS_PLAYING
+
+  beq +++
+
+    lda.b palette.animation.speed
+    and.b palette.animation.timer
+    and.w #$ff
+    bne +++
+
+      lda.b palette.animation.frame.current
+      inc a
+      cmp.b palette.animation.frame.max
+      bcc ++
+        lda palette.animation.flags
+        bit.w #ANIMATION.FLAGS.IS_LOOPING
+        beq +
+          lda.b palette.animation.frame.loopstart
+          bra ++
+
++
+            lda.w #ANIMATION.FLAGS.IS_PLAYING
+            trb palette.animation.flags
+
+            lda.b palette.animation.frame.max
+            dec a
+            sta.b palette.animation.frame.last
+
+++  sta.b palette.animation.frame.current
+    
++++
+  plp
+  rts
+
+palette.library.setupFramePointer:
+_setupFramePointer:
+  php
+  rep #$31
+  lda.b palette.animation.frame.current
+  asl a
+  adc.w #PALETTE_ANIMATION.FRAME.POINTER
+  tay
+  lda.b palette.animation.pointer+1
+  sta.b palette.animation.frame.pointer+1
+
+  lda.b [palette.animation.pointer],y
+  clc
+  adc.b palette.animation.pointer
+  sta.b palette.animation.frame.pointer
+  plp
+  rts
+
+palette.library.kill:
+  AX16
+  jsr palette.library.deallocate
+  jmp object.library.kill
+
+.ends

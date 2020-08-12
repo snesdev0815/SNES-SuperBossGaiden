@@ -1,0 +1,73 @@
+/**
+* A cone that is typically hidden and can be collected.
+* Collected cones are saved persistently and displayed on title screen
+* 
+*/
+.include "src/class/lifeform/lifeform.cone.h"
+.section "lifeform.cone"
+
+  METHOD init
+  lda.w #SPRITE.cone.idle.PTR
+  ldx.w #0
+  jsl extern.lifeform.initialize
+
+  lda OBJECT.CALL.ARG.5,s
+  sta this.id
+  rts
+
+
+  METHOD play
+  stz lifeform.controller.current.actions
+  lda lifeform.animation.base
+  ;always harmless
+  jsl extern.lifeform.evalOffscreen
+
+  ;always harmless
+  lda.w #OBJECT.PROPERTIES.hurts
+  jmp iterator.library.clearProperties
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +
+    jsl extern.lifeform.onAttack
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.GRAB
+  bne +
+    ldx.w #this.script
+    jsr core.object.exists
+    bcs ++
+      pei (this.id)
+      NEW_TRY Script.CLS.PTR this.script gotEasterEgg
+      pla
+
+++    
+    jsl extern.lifeform.onGrab
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.THROW
+  bne +
+    jsl extern.lifeform.onThrow
+    rts
+
++
+  clc
+  rts
+
+  METHOD setPosition
+  jmp lifeform.library.setBasepointPosition 
+
+  CLASS lifeform.cone oncommand
+
+.ends	

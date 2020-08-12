@@ -1,0 +1,521 @@
+# textfile, utf-8 format.
+#
+# Here are some special chars so that your text editor knows what encoding to select: äöüß€
+#
+# File format:
+# Comments are denoted by # as first character on a line 
+# Textlines are denoted like so: identifier=textstring
+# Identifiers may consist of Letters A-Z, a-z and number 0-9
+# Anything not identified as comment line or new textstring is appended to last string
+# Whitespace, linebreaks, tabs in front and after each textstring are stripped.
+# Lines may be separated by Unix (\n) or Windows (\r\n) linebreaks
+# Linebreaks in this file DO NOT translate to linebreaks in the in-game text. Use the <break> command for that
+#
+# Control codes are denoted by <command[, arg0, arg1, ... argn]>
+# For a list of supported control codes, see documentation
+
+
+exception=
+<position, 8, 8>
+<string, text.error.starLine>
+a fatal error has occured!<break>
+<string, text.error.starLine>
+error-message:
+<position, 8, 128>
+<string, text.error.starLine>
+<string, text.error.cpuInfo>
+<string, text.error.starLine>
+<end>
+
+
+starLine=****************************<break><end>
+
+cpuInfo=
+cpu status:<break>
+a:   <hex, excA, 2> x:   <hex, excX, 2> y: <hex, excY, 2><break>
+flag:  <hex, excFlags, 1> stck:<hex, excStack, 2> pc:<hex, excPc, 2><break>
+dp:  <hex, excDp, 2> pb:    <hex, excPb, 1> db:  <hex, excDb, 1><break>
+<end>
+
+  
+stackTrash=
+<position, 8, 48>
+Routine<break>
+<string, text.error.classMethod>has trashed the stack.<end>
+
+objLstFull=
+<position, 8, 48>
+No free slot left to create<break>
+instance of class.<end>
+#instance of class <indirect-to-direct-pointer, GLOBAL.currentClassStr>.<end>
+
+objRamFull=
+<position, 8, 48>
+Unable to allocate ram<break>
+for instance of class,<break>
+#for instance of class <indirect-to-direct-pointer, GLOBAL.currentClassStr>,<break>
+insufficient memory.<end>
+
+brk=
+<position, 8, 48>
+BRK encountered.<break>
+<string, text.error.lastCalled><end>
+
+stackOver=
+<position, 8, 48>
+Stack overflow detected.<break>
+<string, text.error.lastCalled><end>
+
+lastCalled=
+Last called method was<break>
+<string, text.error.classMethod>.<end>
+  
+classMethod=
+what::ever()<end>
+#<indirect-to-direct-pointer, GLOBAL.currentClassStr>::<indirect-to-direct-pointer, GLOBAL.currentMethodStr>()<end>
+
+todo=
+<position, 8, 48>
+TODO:<break>
+Routine needs reworking<end>
+
+spcTimeout=
+<position, 8, 48>
+SPC700 communication<break>
+timeout.<end>
+
+objBadHash=
+<position, 8, 48>
+Bad object hash encountered<break>
+while dispatching obj method.<end>
+
+objBadMethod=
+<position, 8, 48>
+Unable to execute non-existant<break>
+method<break>
+<string, text.error.classMethod>.<end>
+
+objNotFound=
+<position, 8, 48>
+Unable to execute method<break>
+<string, text.error.classMethod><break>
+on non-existant object.<end>
+
+undefined=
+undefined<end>
+
+badScript=
+<position, 8, 48>
+Script at $C0:<hex, excArgs, 2> is<break>
+invalid or no script at all.<end>
+
+stackUnder=
+<position, 8, 48>
+Stack underflow detected.<break>
+<string, text.error.lastCalled><end>
+
+cop=
+<position, 8, 48>
+COP encountered.<break>
+<string, text.error.lastCalled><end>
+  
+scriptStackTrash=
+<position, 8, 48>
+A script has trashed the<break>
+stack.<break>
+<string, text.error.lastCalled><end>
+
+unhandledIrq=
+<position, 8, 48>
+Unhandled IRQ encountered.<end>
+    
+spcNoStimulusCallback=
+<position, 8, 48>
+No callback routine for<break>
+SPC stimulus registered.<break>
+
+dmaQueueFull=
+<position, 8, 48>
+No free DMA-queue-slot<break>
+left <string, text.error.methodStackObj><end>
+  
+methodStackObj=
+for method <break>
+<string, text.error.classMethod>.<end>
+
+invalidDmaTransferType=
+<position, 8, 48>
+Illegal DMA transfer type<break>
+$<hex, excArgs, 1> issued<break>
+<string, text.error.methodStackObj><end>
+
+invalidDmaTransferLength=
+<position, 8, 48>
+DMA transfer with invalid<break>
+length $<hex, excArgs, 2> issued <break>
+<string, text.error.methodStackObj><end>
+
+vAllocBadStepsize=
+<position, 8, 48>
+Bad stepsize $<hex, excArgs, 2><break>
+requested while <break>allocating VRAM.<end>
+
+vAllocEmptyDeallocation=
+<position, 8, 48>
+No allocated blocks of <break>
+id#<hex, excArgs, 1> found<break>
+while deallocating VRAM.<end>
+
+unitTestComplete=
+<position, 8, 48>
+All unit tests completed<break>
+successfully.<end>
+
+unitTestFail=
+<position, 8, 48>
+Unit test id#<hex, excArgs, 1> failed.<end>
+
+vAllocInvalidLength=
+<position, 8, 48>
+Illegal VRAM allocation<break>
+call, zero length<break>
+requested.<end>
+  
+cgAllocInvalidLength=
+<position, 8, 48>
+Illegal CGRAM allocation<break>
+call, zero length<break>
+requested.<end>
+  
+cgAllocBadStepsize=
+<position, 8, 48>
+Bad stepsize <hex, excArgs, 2><break>
+requested while <break>
+allocating CGRAM.<end>
+  
+cgAllocInvalidStart=
+<position, 8, 48>
+Invalid start <hex, excArgs, 2><break>
+requested while<break>
+allocating CGRAM.<end>
+  
+cgAllocEmptyDeallocation=
+<position, 8, 48>
+No allocated blocks of<break>
+id#<hex, excArgs, 1> found<break>
+while deallocating CGRAM.<end>
+  
+badParameters=
+<position, 8, 48>
+Bad parameters passed to<break>
+method <string, text.error.classMethod>.<end>
+
+outOfVram=
+<position, 8, 48>
+Unable to allocate $<hex, excArgs, 2><break>
+bytes of VRAM in method<break>
+<string, text.error.classMethod>.<end>
+
+outOfCgram=
+<position, 8, 48>
+Unable to allocate $<hex, excArgs, 2><break>
+bytes of CGRAM in method<break>
+<string, text.error.classMethod>.<end>
+  
+invalidException=
+<position, 8, 48>
+Exception of unknown origin.<break>
+<string, text.error.lastCalled><end>
+
+objStackCorrupted=
+<position, 8, 48>
+Object-stack has been<break>
+corrupted <string, text.error.methodStackObj><end>
+
+badEventResult=
+<position, 8, 48>
+Event.result at $C0:<hex, excArgs, 2> is<break>
+invalid or no result at all.<end>
+  
+abstractClass=
+<position, 8, 48>
+Instanciation of abstract<break>
+class<break>
+#class <indirect-to-direct-pointer, GLOBAL.currentClassStr><break>
+is disallowed.<end>
+  
+noChapterFound=
+<position, 8, 48>
+<string, text.error.classMethod><break>
+is unable to find<break>
+current chapter object.<end>
+  
+noCheckpointFound=
+<position, 8, 48>
+<string, text.error.classMethod><break>
+is unable to find<break>
+checkpoint to return to.<end>
+  
+badSpriteAnimation=
+<position, 8, 48>
+Spriteanimation <hex, excArgs, 2> is<break>
+invalid or no animation<break>
+at all.<end>
+
+badHdmaAnimation=
+<position, 8, 48>
+HDMAanimation <hex, excArgs, 1> is<break>
+invalid or no animation<break>
+at all.<end>
+
+badPaletteAnimation=
+<position, 8, 48>
+Paletteanimation <hex, excArgs, 1> is<break>
+invalid or no animation<break>
+at all.<end>
+
+badVwfFont=
+<position, 8, 48>
+Vwf font <hex, excArgs, 1> is<break>
+invalid or no font<break>
+at all.<end>
+  
+vwfAllocationOverflow=
+<position, 8, 48>
+Requested vwf string length<break>
+exceeds allocated buffer<break>
+in VRAM.<end>
+
+
+allocatedVramExceeded=
+<position, 8, 48>
+Spriteanimation <hex, (excArgs&$ffff+2), 2>, frm <hex, excArgs, 2><break>
+exceeds allocated VRAM space<break>
+in <string, text.error.classMethod>.<end>
+  
+allocatedCgramExceeded=
+<position, 8, 48>
+Spriteanimation <hex, (excArgs&$ffff+2), 2>, frm <hex, excArgs, 2><break>
+exceeds allocated CGRAM space<break>
+in <string, text.error.classMethod>.<end>
+  
+invalidDmaChannel=
+<position, 8, 48>
+DMA-channel id <hex, excArgs, 1> is<break>
+invalid, unable to deallocate.<end>
+  
+dmaChannelEmpty=
+<position, 8, 48>
+DMA-channel id <hex, excArgs, 1> is<break>
+empty, unable to deallocate.<end>
+  
+noDmaChannel=
+<position, 8, 48>
+Unable to allocate DMA-channel.<end>
+  
+  
+badBgAnimation=
+<position, 8, 48>
+Bganimation <hex, excArgs, 1> is<break>
+invalid or no animation<break>
+at all.<end>
+  
+badBgLayer=
+<position, 8, 48>
+$<hex, excArgs, 1> is not a valid<break>
+physical bg-layer-id<break>
+<string, text.error.classMethod>.<end>
+    
+wAllocBadStepsize=
+<position, 8, 48>
+Bad stepsize <hex, excArgs, 2><break>
+requested while <break>
+allocating WRAM.<end>
+  
+wAllocEmptyDeallocation=
+<position, 8, 48>
+No allocated blocks of <break>
+id#<hex, excArgs, 1> found<break>
+while deallocating WRAM.<end>
+  
+outOfWram=
+<position, 8, 48>
+Unable to allocate $<hex, excArgs, 2><break>
+bytes of WRAM in method<break>
+<string, text.error.classMethod>.<end>
+  
+badInputDevice=
+<position, 8, 48>
+Bad input device <break>
+id#<hex, excArgs, 1> accessed<break>
+<string, text.error.classMethod>.<end>
+
+badIrq=
+<position, 8, 48>Bad IRQ callback registration.<end>
+
+badCallback=
+<position, 8, 48>Bad callback registration.<end>
+
+noIrqCallback=
+<position, 8, 48>
+No IRQ callback registered.<end>
+
+badIrqCallback=
+<position, 8, 48>
+Registred IRQ callback is bad.<end>
+  
+sramBad=
+<position, 8, 48>
+Error writing to SRAM at<break>
+adress $<hex, (excArgs&$ffff+2), 1>:<hex, excArgs, 2><end>
+  
+deprecated=
+<position, 8, 48>
+Called method is deprecated<end>
+  
+mathLUTBadPos=
+<position, 8, 48>
+Trigonometric lookup value<break>
+$<hex, excArgs, 1> is bad.<break>
+Valid range is 0pi - 2pi.<end>
+
+badLevel=
+<position, 8, 48>
+Requested level having id<break>
+$<hex, excArgs, 1> is bad.<end>
+
+levelTooManyObjects=
+<position, 8, 48>
+Level having id $<hex, excArgs, 1><break>
+has too many objects.<end>
+
+tooManyObjectArgs=
+<position, 8, 48>
+Level having id $<hex, excArgs, 1><break>
+has object with<break>
+too many arguments.<end>
+
+cgramPoolFull=
+<position, 8, 48>
+Unable to allocate<break>
+cgram, color palette<break>
+pool is full.<end>
+
+cgramPoolBadDeallocation=
+<position, 8, 48>
+Attempted to deallocate<break>
+hash not in palette<break>
+pool.<end>
+
+cgramPoolEmptyDeallocation=
+<position, 8, 48>
+Subscriber count went<break>
+negative while attempting<break>
+to deallocate palette<break>
+from palette pool.<end>
+
+vramPoolFull=
+<position, 8, 48>
+Unable to allocate<break>
+VRAM, oam tile<break>
+pool is full.<end>
+
+vramPoolBadDeallocation=
+<position, 8, 48>
+Attempted to deallocate<break>
+hash not in oam tile<break>
+pool.<end>
+
+vramPoolEmptyDeallocation=
+<position, 8, 48>
+Subscriber count went<break>
+negative while attempting<break>
+to deallocate VRAM<break>
+from oam tile pool.<end>
+
+badCollisionTile=
+<position, 8, 48>
+Invalid collision<break>
+tile $<hex, excArgs, 1><break>
+encountered.<end>
+
+textOverflow=
+<position, 8, 48>
+Text overflowed beyond<break>
+right screen edge.<end>
+
+
+divisionByZero=
+<position, 8, 48>
+Division by zero. FYI: the<break>
+world just exploded.<end>
+
+valueError=
+<position, 8, 48>
+Value error,<break>
+$<hex, excArgs, 2> exceeds valid range.<end>
+
+indexError=
+<position, 8, 48>
+Index error,<break>
+$<hex, excArgs, 2> exceeds valid range.<end>
+
+checksumMismatch=
+<position, 8, 48>
+Save data checksum mismatch,<break>
+data is corrupt.<end>
+
+lifeformCommandRejected=
+<position, 8, 48>
+Lifeform does not accept<break>
+command $<hex, excArgs, 1>.<end>
+
+checksumKernelBad=
+<position, 8, 48>
+Kernel checksum bad.<end>
+
+checksumROMBad=
+<position, 8, 48>
+ROM checksum bad.<end>
+
+saveSlotBad=
+<position, 8, 48>
+Unable to save to <break>
+slot $<hex, excArgs, 1>.<end>
+
+objDisabled=
+<position, 8, 48>
+Unable to disable<break>
+object id $<hex, excArgs, 2><break>
+at $<hex, (excArgs&$ffff+2), 2>, already is.<end>
+
+objEnabled=
+<position, 8, 48>
+Unable to enable,<break>
+object already is.<end>
+
+
+garbageCollectionFailed=
+<position, 8, 48>
+Garbage collection<break>
+failed.<end>
+
+badRegisterWidth=
+<position, 8, 48>
+Bad register width<break>
+encountered.<end>
+
+Lz4BadFile=
+<position, 8, 48>
+Bad LZ4 file<break>
+encountered.<end>
+
+Lz4UnpackError=
+<position, 8, 48>
+Error while<break>
+unpacking<break>
+LZ4 file.<end>
+
+objRamPointerBad=
+<position, 8, 48>
+Object ram pointer bad.<end>

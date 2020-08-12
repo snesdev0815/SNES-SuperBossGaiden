@@ -1,0 +1,65 @@
+/**
+* Harmless enemy that just keeps on walking
+* 
+*/
+.include "src/class/lifeform/lifeform.bluecollar.h"
+.section "lifeform.bluecollar"
+
+  METHOD init
+  lda.w #SPRITE.bluecollar.run.PTR
+  ldx.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT)
+  jsl extern.lifeform.initialize
+
+  lda #lifeform.turn.CLB
+  sta lifeform.callback.touch.wall
+  rts
+
+
+  METHOD play
+  jsl extern.lifeform.evalOffscreen
+  rts
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +
+    jsl extern.lifeform.onAttack
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.GRAB
+  bne +
+    jsl extern.lifeform.onGrab
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.THROW
+  bne +
+    jsl extern.lifeform.onThrow
+    rts
+
++
+  cmp.w #LIFEFORM.COMMAND.KNOCK_OUT
+  bne +
+    jsl extern.lifeform.onKnockOut
+    rts
+
++
+  clc
+  rts
+  
+  METHOD setPosition
+  jmp lifeform.library.setBasepointPosition
+
+
+  CLASS lifeform.bluecollar oncommand
+.ends	
+	

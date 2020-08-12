@@ -1,0 +1,27 @@
+/**
+* HDMA table file includes
+*
+*/
+
+.Section "HdmaAnimationLUT" superfree
+HdmaAnimationLUT:
+  PTRLONG HdmaAnimationLUT HDMA.fade_out
+  PTRLONG HdmaAnimationLUT HDMA.fade_in
+  PTRLONG HdmaAnimationLUT HDMA.blink
+  PTRLONG HdmaAnimationLUT HDMA.sky_bleak
+  PTRLONG HdmaAnimationLUT HDMA.sky_danger
+  PTRLONG HdmaAnimationLUT HDMA.windows
+  PTRLONG HdmaAnimationLUT HDMA.berzerk
+  PTRLONG HdmaAnimationLUT HDMA.textbox_fadein
+  PTRLONG HdmaAnimationLUT HDMA.textbox_fadeout
+.ends   
+
+  HDMA_WINDOW_ANIMATION fade_out
+  HDMA_WINDOW_ANIMATION fade_in
+  HDMA_WINDOW_ANIMATION blink
+  HDMA_PALETTE_ANIMATION sky_bleak
+  HDMA_PALETTE_ANIMATION sky_danger
+  HDMA_PALETTE_ANIMATION windows
+  HDMA_PALETTE_ANIMATION berzerk
+  HDMA_WINDOW_ANIMATION textbox_fadein
+  HDMA_WINDOW_ANIMATION textbox_fadeout

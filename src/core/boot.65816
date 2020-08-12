@@ -1,0 +1,193 @@
+/**
+* Initializes SNES and enters mainloop
+*/
+
+
+.include "src/core/boot.h"
+.Section "Main Code"
+
+StopJmp:
+    TRIGGER_ERROR E_Brk
+StopCopJmp:
+    TRIGGER_ERROR E_Cop
+    jsr core.audio.reset
+
+core.boot.init:
+	sep #$20
+
+	lda #RAM
+	pha
+	plb
+	rep #$31
+	lda.w #ZP
+	tcd
+
+	lda.w #STACK
+	tcs
+
+	jsr ClearRegisters
+
+	sep #$20
+	lda.b #0		;clear zero page
+	ldy.w #kernelEnd-kernelStart
+	ldx.w #ZP
+	jsr ClearWRAM
+
+	lda.b #0		;clear variable buffer
+	ldy.w #VARS_end-VARS
+	ldx.w #VARS
+	jsr ClearWRAM
+	
+	rep #$31
+	jsr core.unpack.init
+	jsr core.wram.init
+	jsr core.vram.init
+    jsr core.string.init
+	jsr core.cgram.init
+    jsr core.cgram.pool.init
+	jsr core.random.init
+	jsr core.dma_channel.init
+    jsr core.dma.init
+	jsr core.input.init
+    jsr core.audio.init
+    jsr core.nmi.init
+    jsr core.irq.init
+    jsr core.object.init
+    jsr core.oam_tiles.pool.init
+	jsr core.oam.init
+	jsr core.screen.init
+	jsr vwf.renderer.init
+
+	NEW Script.CLS.PTR VOID main
+
+;tier 0 main loop starts here:
+core.boot.mainLoop:
+    jsr core.nmi.waitFrame
+
+core.boot.frameStart:
+    lda #TRUE
+    sta.w GLOBALS.nmi.frame.busy
+
+    jsr core.screen.play
+	jsr core.object.play
+    jsr core.oam.play
+    jsr core.audio.play
+
+    stz.w GLOBALS.nmi.frame.busy
+
+    sep #$20
+	lda.b #WRIO_JOY2_IOBIT_LATCH
+	sta.l WRIO
+	nop
+	nop
+	nop
+	nop
+	lda.l SLHV
+	lda.l STAT78			;reset $213d to low byte
+	lda.l OPVCT			;get current scanline
+	sta.w CpuUsageScanline
+	rep #$31
+
+	bra core.boot.mainLoop
+
+
+/**
+* @param x <int, 16bit>	callback adress in bank 0
+*/
+core.subroutine.execute:
+	dex
+	bra ++
+
+core.callback.execute:
+	AX16
+    ;jump to registered callback if valid
+    lda.l (ROM << 16),x
+    cmp #CALLBACK_MAGIC
+    beq +
+      TRIGGER_ERROR E_BadIrqCallback
+
++
+    inx
+++    
+    pea _return-1   ;push return adress
+    phx ;push callback adress
+_return:
+    rts ;this is actually a jump to subroutine on stack, then return
+
+extern.callback.execute:
+    AX16
+
+    ;jump to registered callback if valid
+    lda.l (ROM << 16),x
+    cmp #CALLBACK_MAGIC
+    beq +
+      TRIGGER_ERROR E_BadIrqCallback
+
++
+    inx
+    ;inx
+++    
+    pea _extern.return-1   ;push return adress
+    phx ;push callback adress
+    rts ;this is actually a jump to subroutine on stack
+_extern.return:
+    rtl
+
+;crappy hack for scripts, execute 24 bit callback
+core.callback.execute.long:
+    AX16
+    inx
+
+++  
+	phk
+    pea _return.long-1   ;push return adress
+    sep #$20
+    tya ;push callback bank
+    pha
+    rep #$31
+    phx ;push callback adress
+    rtl ;this is actually a jump to subroutine on stack,
+
+_return.long:
+    rts
+
+.ends
+
+
+
+  .bank BANK.PROGRAM
+
+.org BANK0_LOROM
+.section "IRQ Bootstrap" force
+
+NmiHandler:
+	jml core.nmi.play
+
+EmptyHandler:
+	rti
+
+Stop:
+	jml StopJmp
+
+
+StopCop:
+	jml StopCopJmp
+
+
+Boot:
+	sei
+	clc
+	xce
+	phk
+	plb
+	sep #$20
+	stz NMITIMEN		;disable timers, NMI,and auto-joyread
+	lda #MEMSEL_FASTROM_ENABLE
+	sta MEMSEL		;set memory mode to fastrom
+	sta.l GLOBAL.memsel
+	jml core.boot.init
+
+IrqHookUp:
+	jml core.irq.play
+
+.ends

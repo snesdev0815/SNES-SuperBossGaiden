@@ -1,0 +1,107 @@
+/**
+* Generic sprite animation that travels in requested direction
+* 
+* @param a<int, 16bit>  x-pos
+* @param 1<int, 16bit>  y-pos
+* @param 5<bool, 1bit>  center at input position
+* @param 6<int, 8bit>  sprite flags (oam priority)
+*/
+
+.include "src/class/sprite/sprite.directed.h"
+.section "sprite.directed"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta.b dimension.position.x + 1
+
+  lda OBJECT.CALL.ARG.2,s
+  sta.b dimension.position.y + 1
+
+  lda.w #OAM.PRIORITY.3
+  sta animation.buffer.flags
+
+  lda OBJECT.CALL.ARG.5,s
+  and.w #(ANIMATION.FLAGS.IS_LOOPING | ANIMATION.FLAGS.STATIC.PALETTES | ANIMATION.FLAGS.STATIC.TILES | ANIMATION.FLAGS.UPLOADED.PALETTES | ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.UPLOADED.TILES_BIG | ANIMATION.FLAGS.ANY.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES | ANIMATION.FLAGS.UPLOADED.TILEMAP | ANIMATION.FLAGS.IS_PLAYING) ~$ffff
+  tsb.b animation.flags.static
+
+  lda OBJECT.CALL.ARG.3,s
+  jsr sprite.library.startAnimation.try
+  bcs +
+    jmp _kill
+
++
+  lda OBJECT.CALL.ARG.4,s
+  sta.b animation.speed
+  sep #$20
+  lda OBJECT.CALL.ARG.6,s
+  sta.b dimension.direction
+  rep #$31
+  lda OBJECT.CALL.ARG.8,s
+  sta.b this.turnRate
+  rts
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD play
+  sep #$20
+  lda dimension.direction
+  clc
+  adc this.turnRate
+  sta dimension.direction
+  rep #$31
+  
+  lda.b dimension.direction
+  and.w #$ff
+  asl a
+  tax
+  lda.l math.lut.cos,x
+
+  asl a
+  asl a
+  asl a
+
+  sta dimension.speed.x
+
+  lda.b dimension.direction
+  and.w #$ff
+  asl a
+  tax
+  lda.l math.lut.sin,x
+
+  asl a
+  asl a
+  asl a
+  sta dimension.speed.y
+
+  ldx dimension.speed.x
+  ldy dimension.speed.y
+  jsr dimension.library.translate
+
+  jsr sprite.library.playAnimation
+
+  ;kill after animation has completed.
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.IS_PLAYING
+  bne +
+    bra _kill
++
+  rts
+
+
+  METHOD disable
+  jmp sprite.library.disable
+
+
+  METHOD enable
+  jmp sprite.library.enable
+  
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  CLASS sprite.directed
+
+.ends 
+  

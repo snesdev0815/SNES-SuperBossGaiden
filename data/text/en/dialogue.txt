@@ -1,0 +1,539 @@
+# textfile, utf-8 format.
+#
+# Here are some special chars so that your text editor knows what encoding to select: äöüß€
+#
+# File format:
+# Comments are denoted by # as first character on a line
+# Textlines are denoted like so: identifier=textstring
+# Identifiers may consist of Letters A-Z, a-z and number 0-9
+# Anything not identified as comment line or new textstring is appended to last string
+# Whitespace, linebreaks, tabs in front and after each textstring are stripped.
+# Lines may be separated by Unix (\n) or Windows (\r\n) linebreaks
+# Linebreaks in this file DO NOT translate to linebreaks in the in-game text. Use the <break> command for that
+#
+# Control codes are denoted by <command[, arg0, arg1, ... argn]>
+# For a list of supported control codes, see documentation
+
+none=
+I am error.<end>
+
+
+introSetting=
+   10.07.20XX<break>
+<break>
+     Sony HQ<break>
+Minato-ku, Tokyo<break>
+      Japan<end>
+
+#### meeting room ###
+
+sacredPlayStation=
+<sprite, SPRITE.portrait.philomena.pressure.PTR, 15, 27>
+Boss, one of our Nintendo<break>
+PlayStation prototypes has<break>
+fallen into public hands...<end>
+
+emulatedAlready=
+<sprite, SPRITE.portrait.orkan.pressure.PTR, 15, 27>
+...and it's been<break>
+emulated already.<end>
+
+wha=
+<sprite, SPRITE.portrait.boss.shocked.PTR, 15, 27>
+Wha..?<end>
+
+unlicensedGames=
+<sprite, SPRITE.portrait.fausto.sad.PTR, 15, 27>
+Worst of all, unlicensed<break>
+games for it are on the<break>
+internet as we speak!<end>
+
+kiddingMe=
+<sprite, SPRITE.portrait.boss.twitch.PTR, 15, 27>
+Are you kidding me?<end>
+
+explicitOrders=
+<sprite, SPRITE.portrait.boss.rage.PTR, 15, 27>
+You had explicit<break>
+orders to destroy<break>
+ALL REMAINING UNITS!<end>
+
+youllPay=
+<sprite, SPRITE.portrait.boss.rage.PTR, 15, 27>
+THIS IS AN OUTRAGE, AND<break>
+YOU'LL PAY FOR IT!!!<end>
+
+#### in-betweens ###
+
+#explosion here
+#random choice 1
+goingBerzerk=
+<sprite, SPRITE.portrait.orkan.talk.PTR, 15, 27>
+Wow,<break>
+that escalated quickly...<end>
+#random choice 2
+andBerzerk=
+<sprite, SPRITE.portrait.orkan.talk.PTR, 15, 27>
+Aaand he's gone<break>
+full berzerk.<break>
+Terrific...<end>
+
+
+talkOver=
+<sprite, SPRITE.portrait.philomena.pressure.PTR, 15, 27>
+Look boss, can't we<break>
+talk this over..?<end>
+
+
+approachingLobby=
+<sprite, SPRITE.portrait.fausto.talk.PTR, 15, 27>
+Ok, he's approaching<break>
+the lounge now.<end>
+
+dontCare=
+<sprite, SPRITE.portrait.philomena.talk.PTR, 15, 27>
+I don't care if he wrecks<break>
+the lounge, as long as he<break>
+doesn't reach R&D.<end>
+
+doesntWreck=
+<sprite, SPRITE.portrait.philomena.talk.PTR, 15, 27>
+Him breaking loose there<break>
+would cost us<break>
+months of progress!<end>
+
+### elevator shaft ###
+headingElevator=
+<sprite, SPRITE.portrait.fausto.pressure.PTR, 15, 27>
+He's heading for the<break>
+elevator shaft. Seal the<break>
+emergency trap doors!<end>
+
+#big explosion, screen shake
+
+wontGetOut=
+<sprite, SPRITE.portrait.orkan.talk.PTR, 15, 27>
+Done.<break>
+He won't get out of<break>
+there, that's for sure!<end>
+
+#fausto throws bomb
+throwBomb=
+<sprite, SPRITE.portrait.philomena.shocked.PTR, 15, 27>
+Don't you think throwing<break>
+bombs is a bit extreme?<break>
+You might hurt him!<end>
+
+safeThanSorry=
+<sprite, SPRITE.portrait.fausto.talk.PTR, 15, 27>
+Better safe than sorry!<break>
+Besides, he's tough as<break>
+nails, he can take it.<end>
+
+#after trap door escape
+myAss=
+<sprite, SPRITE.portrait.philomena.talk.PTR, 15, 27>
+Better safe than sorry,<break>
+huh? Yeah, right...<end>
+
+#upon coming out of ventilation shaft
+reachedRD=
+<sprite, SPRITE.portrait.philomena.shocked.PTR, 15, 27>
+Oh god, he's reached the<break>
+R&D floor!<end>
+
+#upon coming out of ventilation shaft
+sendInStrong=
+<sprite, SPRITE.portrait.philomena.pressure.PTR, 15, 27>
+Quick, send in a strong<break>
+worker to block him!<end>
+
+onHisWay=
+<sprite, SPRITE.portrait.orkan.talk.PTR, 15, 27>
+Good call, he's on his way!<end>
+
+#couple seconds wait
+fragileLegs=
+<sprite, SPRITE.portrait.philomena.pressure.PTR, 15, 27>
+Okay, but couldn't you get<break>
+someone else? His legs<break>
+look really fragile!<end>
+
+skippedLegDay=
+<sprite, SPRITE.portrait.fausto.talk.PTR, 15, 27>
+Looks like he skipped<break>
+leg day!<end>
+
+#need some explosions in r&d
+#need door that only opens if all computers destroyed
+
+### mid boss ###
+thisIsIt=
+<sprite, SPRITE.portrait.orkan.talk.PTR, 15, 27>
+Boss, that's it. You've<break>
+just wrecked all computers<break>
+in the R&D dept!<end>
+
+bareHands=
+<sprite, SPRITE.portrait.orkan.talk.PTR, 15, 27>
+I'm sorry, but I'll have to<break>
+stop you right here. With<break>
+my bare hands if need be!<end>
+
+#street fighter quote
+manEnough=
+<sprite, SPRITE.portrait.orkan.talk.PTR, 15, 27>
+Are you man enough to<break>
+fight me?<end>
+
+#orkan dead
+killedHim=
+<sprite, SPRITE.portrait.philomena.shocked.PTR, 15, 27>
+Oh my god, did he just<break>
+kill him?<end>
+
+meansWar=
+<sprite, SPRITE.portrait.philomena.mad.PTR, 15, 27>
+OK, THIS MEANS WAR!!!<end>
+
+#now exit appears
+
+
+### spike room ###
+
+spikes=
+<sprite, SPRITE.portrait.fausto.talk.PTR, 15, 27>
+Spikes and cannons, we<break>
+sure know how to deal with<break>
+minion performance issues!<end>
+
+stopManiac=
+<sprite, SPRITE.portrait.philomena.mad.PTR, 15, 27>
+STOP FOOLING AROUND AND<break>
+HELP ME STOP THIS<break>
+MANIAC INSTEAD!!<end>
+
+
+Spikes and cannons, they<break>
+sure know how to deal with<break>
+minion performance issues!<end>
+
+
+#free beer obstacle
+somethingElse=
+<sprite, SPRITE.portrait.fausto.pressure.PTR, 15, 27>
+Don't we have something<break>
+else to throw at him?<end>
+
+thisIsManagement=
+<sprite, SPRITE.portrait.philomena.talk.PTR, 15, 27>
+This is management<break>
+speaking, with a<break>
+public announcement:<end>
+
+freeBeerAvailable=
+<sprite, SPRITE.portrait.philomena.talk.PTR, 15, 27>
+Free beer is now available<break>
+for all employees at the<break>
+cafeteria!<end>
+
+comingInDroves=
+<sprite, SPRITE.portrait.fausto.bliss.PTR, 15, 27>
+Nice, they're coming<break>
+in droves!<end>
+
+
+#preparing for final onslaught
+readyFinalOnslaught=
+<sprite, SPRITE.portrait.philomena.talk.PTR, 15, 27>
+Alright, ready to deliver<break>
+the final onslaught?<end>
+
+almostThere=
+<sprite, SPRITE.portrait.fausto.pressure.PTR, 15, 27>
+Just a sec,<break>
+almost there...<end>
+
+charge=
+<sprite, SPRITE.portrait.philomena.mad.PTR, 15, 27>
+CHAAARGE!!!!!<end>
+
+
+#final boss
+pincerMove=
+<sprite, SPRITE.portrait.philomena.mad.PTR, 15, 27>
+PINCER MOVE, NOW!!!<end>
+
+#contra 3 reference for good measure
+attackAggressively=
+<sprite, SPRITE.portrait.fausto.talk.PTR, 15, 27>
+Let's attack aggressively!<end>
+
+#mg rex stuff. two for each, depends on who's the remainder
+planB=
+<sprite, SPRITE.portrait.philomena.pressure.PTR, 15, 27>
+Crap, time for plan B!<end>
+
+#after mount
+rexIsGo=
+<sprite, SPRITE.portrait.philomena.mad.PTR, 15, 27>
+MG REX IS GO!!!<end>
+
+#after mg rex 
+destroyedRex=
+<sprite, SPRITE.portrait.philomena.mad.PTR, 15, 27>
+Just because you<break>
+destroyed MG Rex doesn't<break>
+mean I'm done fighting!<end>
+
+stashedInRD=
+<sprite, SPRITE.portrait.fausto.talk.PTR, 15, 27>
+Lookie, lookie what we had<break>
+stashed away in R&D.<end>
+
+#after mount
+myFinalForm=
+<sprite, SPRITE.portrait.fausto.talk.PTR, 15, 27>
+...and this isn't even<break>
+my final form!<end>
+
+#after mg rex 
+martialArts=
+<sprite, SPRITE.portrait.fausto.talk.PTR, 15, 27>
+Prepare to face my Super-<break>
+Ultra-Mambo-Tango-<break>
+Foxtrot martial arts!<end>
+
+#crackedUp=
+#<sprite, SPRITE.portrait.fausto.talk.PTR, 15, 27>
+#This thing wasn't all it's<break>
+#cracked up to be, I guess...<end>
+
+
+
+
+#Outer heaven destruction switch activated!
+#Evacuate now
+
+#escape sequence
+
+emergeUnscathed=
+<sprite, SPRITE.portrait.philomena.ghost.PTR, 15, 27>
+We have failed, but<break>
+you will not emerge<break>
+unscathed.<end>
+
+prepareToDie=
+<sprite, SPRITE.portrait.philomena.ghost.PTR, 15, 27>
+Prepare for the<break>
+full extent of the jam!<end>
+
+feelWrath=
+<sprite, SPRITE.portrait.philomena.ghost.PTR, 15, 27>
+Feel our wrath!<end>
+
+
+#ending
+propDamage=
+<sprite, SPRITE.portrait.philomena.ghost.PTR, 15, 27>
+<decimal, GLOBAL.killCount, 3> dead and millions in<break>
+property damage...<end>
+
+#special piano easter egg
+gotPiano=
+<sprite, SPRITE.portrait.philomena.ghost.PTR, 15, 27>
+At least you saved<break>
+the piano.<end>
+
+cryJustALittle=
+<sprite, SPRITE.portrait.philomena.ghost.PTR, 15, 27>
+That's why<break>
+I cry just a little.<end>
+
+happyNow=
+<sprite, SPRITE.portrait.philomena.ghost.PTR, 15, 27>
+I hope you're happy now,<break>
+you sick freak!<end>
+
+overreacted=
+<sprite, SPRITE.portrait.boss.talk.PTR, 15, 27>
+Well, I might have over-<break>
+reacted a little bit there...<end>
+
+notToWorry=
+<sprite, SPRITE.portrait.boss.talk.PTR, 15, 27>
+Not to worry, though.<end>
+
+newCompany=
+<sprite, SPRITE.portrait.boss.talk.PTR, 15, 27>
+Inspiring leaders like me<break>
+have businesses waiting in<break>
+line!<end>
+
+leadershipSkills=
+<sprite, SPRITE.portrait.boss.bliss.PTR, 15, 27>
+Please look forward to my<break>
+coming adventures at the<break>
+next company!<end>
+
+teamwork=
+<sprite, SPRITE.portrait.boss.talk.PTR, 15, 27>
+And always remember:<break>
+Teamwork means people<break>
+doing what I say.<end>
+
+
+
+### secret char get ###
+ohLook=
+<sprite, SPRITE.portrait.fausto.bliss.PTR, 15, 27>
+Oh look, that's Disk-kun,<break>
+how cute!<end>
+
+notHistory=
+<sprite, SPRITE.portrait.philomena.talk.PTR, 15, 27>
+Seriously? I mean, this guy<break>
+isn't even part of our<break>
+companies history...<end>
+
+terrific=
+<sprite, SPRITE.portrait.philomena.talk.PTR, 15, 27>
+Now here's a green blob<break>
+with a satellite dish<break>
+on top...<end>
+
+whatsNext=
+<sprite, SPRITE.portrait.philomena.talk.PTR, 15, 27>
+What's next,<break>
+Awesome Possum?<break>
+Jesus Christ...<end>
+
+satellaview=
+<sprite, SPRITE.portrait.fausto.talk.PTR, 15, 27>
+Actually, it's one of the<break>
+two Satellaview mascots,<break>
+so it kinda makes sense...<end>
+
+iGuess=
+<sprite, SPRITE.portrait.fausto.talk.PTR, 15, 27>
+I guess...<end>
+
+
+### death ###
+#depending on current state in game, different messages can appear
+#philomena goes from concerned, shocked to vengeance to berzerk to ghost
+#fausto is mostly untouched, opportunistic at best
+#orkan is rational and has a strong mind, but weak body
+#during final escape sequence, sidekicks appear as ghosts, haunting player
+
+#phase one, shock
+bossSuicidePhilomena=
+<sprite, SPRITE.portrait.philomena.shocked.PTR, 15, 27>
+...Boss! ...No!!<break>
+...<break>
+NOOOOOOOOO!!!!<end>
+
+heartAttack=
+<sprite, SPRITE.portrait.orkan.pressure.PTR, 15, 27>
+Get a medic, I think he's<break>
+having a heart attack!<end>
+
+howItEnds=
+<sprite, SPRITE.portrait.fausto.talk.PTR, 15, 27>
+So this is how it ends...<end>
+
+
+#phase two, anger
+bossSuicidePhilomenaJerk=
+<sprite, SPRITE.portrait.philomena.talk.PTR, 15, 27>
+Serves him right.<break>
+Jerk!<end>
+
+heartAttackJerk=
+<sprite, SPRITE.portrait.fausto.talk.PTR, 15, 27>
+Guess I won't be seeing<break>
+him again, huh?<end>
+
+#phase three, only one remainder left, berzerk
+mwahaha=
+<sprite, SPRITE.portrait.philomena.mad.PTR, 15, 27>
+MWAHAHAHAHA!!!<end>
+
+
+#phase four, ghosts
+justiceServed=
+<sprite, SPRITE.portrait.philomena.ghost.PTR, 15, 27>
+Justice served<break>
+at last.<end>
+
+
+#### credits ###
+
+creditsMusic=
+Music:<break>
+lhs<end>
+
+creditsProgram=
+Program:<break>
+Dieter von Laser<end>
+
+mapDesign=
+Map Design &<break>
+General Support:<break>
+ChronoMoogle<end>
+
+creditsSpecial=
+Special Thanks:<break>
+bubbler     mcgrew<break>
+trashfan<break>
+Nocash<break>
+badinsults<end>
+
+creditsFont=
+Font:<break>
+Picteau<end>
+
+
+### easter eggs ###
+gotEasterEgg=
+Found silly cone <decimal, GLOBAL.CORE.STRING.argument.0, 1>/4.<end>
+
+
+disclaimer=
+               -DISCLAIMER-<break>
+<break>
+The story, characters and incidents<break>
+portrayed in this game are fictitious.<end>
+
+disclaimer2=
+No identification with actual persons<break>
+is intended or should be inferred.<end>
+
+disclaimer3=
+This game is not licensed by,<break>
+authorized, endorsed by, or in any<break>
+way connected with Sony<break>
+Corporation or Nintendo Co., Ltd.<end>
+
+disclaimer4=
+This game is non-commercial.<end>
+
+
+#ranking:
+rankingPreface=
+Your leadership skill rank:<end>
+
+rankingPerfect=
+PERFECT!<end>
+
+rankingS=
+   S<end>
+
+rankingA=
+   A<end>
+
+rankingB=
+   B<end>
+
+rankingC=
+   C<end>

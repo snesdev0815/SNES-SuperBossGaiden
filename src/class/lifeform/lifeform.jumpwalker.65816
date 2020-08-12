@@ -1,0 +1,115 @@
+/**
+* Bouncing enemy that follows player around.
+* Represented by sackboy graphics.
+* 
+*/
+
+.include "src/class/lifeform/lifeform.jumpwalker.h"
+.section "lifeform.jumpwalker"
+
+  METHOD init
+  lda.w #SPRITE.sackboy.idle.PTR
+  ldx.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT | LIFEFORM.ABILITIES.JUMP)
+  jsl extern.lifeform.initialize
+
+  lda #lifeform.turn.CLB
+  sta lifeform.callback.touch.wall
+  lda #banana.jump.CLB
+  sta lifeform.callback.touch.floor
+
+  lda.w #$7
+  sta.b animation.speed    
+  rts
+
+  CALLBACK banana.jump
+  sep #$20
+  lda #LIFEFORM.STATE.JUMPING
+  sta lifeform.state
+
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+
+  lda #LIFEFORM.JUMP.AGE
+  sta lifeform.action.age
+  rep #$31
+
+  lda.w #AUDIO.EFFECT.DASH
+  jsr interface.dimension.playSoundEffect
+
+
+  lda #BANANA.JUMP.IMPULSE
+  sta dimension.speed.y
+
+  lda #BANANA.JUMP.ACCEL
+  sta dimension.acceleration.y
+
+  lda this.jump.count
+  inc a
+  and.w #$1
+  sta this.jump.count
+
+  ;overcome ground traction
+  dec dimension.position.y+1
+
+  lda.w #SPRITE.dust.PTR
+  ldx.w #0
+  ldy.w #10
+  jsl extern.lifeform.sprite
+  rts
+
+
+  METHOD play
+  ;approach player
+  lda animation.timer
+  and.w #$1f
+  bne +
+    jsl extern.lifeform.turnToTarget
+
++
+  jsl extern.lifeform.evalOffscreen
+  rts
+
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +
+    jsr lifeform.fruit.reportAttack
+    jsl extern.lifeform.onAttack
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.GRAB
+  bne +
+    jsl extern.lifeform.onGrab
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.THROW
+  bne +
+    jsr lifeform.fruit.reportAttack
+    jsl extern.lifeform.onThrow
+    rts
+
++
+  clc
+  rts
+
+
+  METHOD setPosition
+  jmp lifeform.library.setBasepointPosition
+
+
+  CLASS lifeform.jumpwalker oncommand
+
+.ends	
+	

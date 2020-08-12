@@ -1,0 +1,90 @@
+/**
+* Shakes screen
+* 
+* @param a<int, 16bit>  x-pos
+* @param 1<int, 16bit>  y-pos
+*/
+
+.include "src/class/level/level.screen.shake.h"
+.section "level.screen.shake"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta.b dimension.position.x + 1
+
+  lda OBJECT.CALL.ARG.2,s
+  sta.b dimension.position.y + 1
+
+  lda OBJECT.CALL.ARG.3,s
+  sta.b dimension.size.x
+
+  lda OBJECT.CALL.ARG.4,s
+  sta.b dimension.size.y
+
+  lda OBJECT.CALL.ARG.5,s
+  and.w #$ff
+  sta.b this.intensity
+
+  ;offset prevents left of screen to glitch out
+  lsr a
+  clc
+  adc.w GLOBAL.screen.shake.offset.x
+  sta.w GLOBAL.screen.shake.offset.x
+
+
+  lda OBJECT.CALL.ARG.6,s
+  and.w #$ff
+  sta.b this.speed
+
+  rts
+
+
+  METHOD play
+  lda this.age
+  bit SPEED.FAST
+  bne +
+  ;linear movement
+    lda this.intensity
+    lsr a
+    pha
+    inc this.counter
+    lda this.counter
+    ror a
+    
+    bcc ++
+      ;left
+      lda.w GLOBAL.screen.shake.offset.x
+      sec
+      sbc 1,s
+      sta.w GLOBAL.screen.shake.offset.x
+      bra +++
+++
+      ;right
+      lda.w GLOBAL.screen.shake.offset.x
+      clc
+      adc 1,s
+      sta.w GLOBAL.screen.shake.offset.x
+
++++
+
+    pla
+
++
+  inc this.age
+  lda this.age
+  and this.speed
+  bne +
+    dec this.intensity
+    bne +
+      CALL level.screen.shake.kill.MTD iterator.self
+
++
+  rts
+
+
+  METHOD kill
+  jmp sprite.library.kill
+
+  CLASS level.screen.shake
+.ends	
+	

@@ -1,0 +1,470 @@
+/**
+* Level exit to same or other map
+* 
+* 
+* @param 1<int, 16bit>  x-pos
+* @param 2<int, 16bit>  y-pos
+* @param 3<int, 16bit>  size x
+* @param 4<int, 16bit>  size y
+* @param 5<int, 16bit>  target map id
+* @param 6<int, 16bit>  player target x-pos
+* @param 7<int, 16bit>  player target y-pos
+*/
+.include "src/class/level/level.exit.h"
+.section "level.exit"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta.b dimension.position.x + 1
+
+  lda OBJECT.CALL.ARG.2,s
+  sta.b dimension.position.y + 1
+
+  lda.w #OAM.PRIORITY.3
+  sta animation.buffer.flags
+  
+  lda.w #ANIMATION.FLAGS.IS_LOOPING
+  tsb animation.flags.static
+
+  lda OBJECT.CALL.ARG.3,s
+  sta.b dimension.size.x
+
+  lda OBJECT.CALL.ARG.4,s
+  sta.b dimension.size.y
+
+  lda OBJECT.CALL.ARG.5,s
+  sta.b this.target.level
+
+  lda OBJECT.CALL.ARG.6,s
+  sta.b this.target.player.pos.x
+
+  lda OBJECT.CALL.ARG.7,s
+  sta.b this.target.player.pos.y
+
+  lda OBJECT.CALL.ARG.8,s
+  sta.b this.target.script
+
+  lda OBJECT.CALL.ARG.9,s
+  bne +
+    lda.w #(EXIT.LOCKED_BY.NONE | EXIT.ENTRANCE.NONE)
+
++
+  ;always start out locked by default
+  ora.w #EXIT.STATUS.LOCKED
+  sta this.flags
+
+  lda OBJECT.CALL.ARG.10,s
+  sta this.lockedBy
+
+  jsr core.random.get
+  sta this.timer
+
+  lda.b this.target.player.pos.x
+  ora.b this.target.player.pos.y
+  bne +
+    ;no target coordinates supplied? acquire default player coordinates from target map
+    lda.b this.target.level
+    jsr static.level.generic.getPlayerDefaultPosition
+    stx.b this.target.player.pos.x
+    sty.b this.target.player.pos.y
+    bra ++
++
+
+
+++
+
+  NEW persistency.slot.CLS.PTR this.persistency
+
+  ;refresh status once on init
+  jsr _refreshLockedStatus
+
+  lda.w #EXIT.STATUS.INITIALIZED
+  tsb this.flags
+
+  lda.w #VOID
+  sta this.scriptObj
+  sta this.scriptObj+2
+  rts
+
+level.exit.checkOffscreenKill:
+  AX16
+  lda iterator.properties
+  bit.w #OBJECT.PROPERTIES.isOnScreen
+  bne +
+    lda.w FrameCounter
+    and.w #$f
+    bne +
+      lda.w (GLOBAL.screen.position.x &$ffff) +1
+      clc
+      adc.w #SCREEN.SIZE.X/2
+      sec
+      sbc dimension.position.x +1
+      SCRIPT_JSR core.math.abs
+      pha
+      lda.w (GLOBAL.screen.position.y &$ffff) +1
+      clc
+      adc.w #SCREEN.SIZE.Y/2
+      sec
+      sbc dimension.position.y +1
+      SCRIPT_JSR core.math.abs
+      clc
+      adc 1,s
+      sta 1,s
+      pla
+      cmp.w #1024
+      bcc +
+        ;could be already dead by now (bomb explode on touch callback), so just try
+        SCRIPT_TRY lifeform.library.kill.MTD iterator.self
+
++
+  rts
+
+  METHOD play
+  lda iterator.properties
+  bit.w #OBJECT.PROPERTIES.isOnScreen
+  bne +
+    jsr level.exit.checkOffscreenKill
+    jmp sprite.library.checkOnScreen
+
++  
+  inc this.timer
+  lda this.timer
+  bit.w #$7
+  bne +
+    jsr _refreshLockedStatus
+
++
+  lda this.flags
+  bit.w #EXIT.STATUS.LOCKED
+  beq +
+    ;if locked, stay at frame 0
+    stz animation.frame.current
+    bra ++
++  
+  lda animation.frame.current
+  bne ++
+    ;if unlocked, dont display frame 0
+    inc animation.frame.current
+
+++
+  lda animation.id
+  beq +
+    ;amend sprite position to bottom center of collision box
+    pei (dimension.position.y+1)
+    pei (dimension.position.x+1)
+
+    lda dimension.size.x
+    lsr a
+    clc
+    adc dimension.position.x+1 ;x-center
+    sta dimension.position.x+1
+
+    lda this.animation.size.x
+    lsr a
+    eor.w #$ffff
+    inc a
+    clc
+    adc dimension.position.x+1
+    sta dimension.position.x+1
+
+    lda dimension.size.y
+    clc
+    adc dimension.position.y+1 ;y-center
+
+    sec
+    sbc this.animation.size.y
+    sta dimension.position.y+1
+
+    jsr sprite.library.playAnimation
+
+    pla
+    sta dimension.position.x+1
+    pla
+    sta dimension.position.y+1
+
++
+  rts
+
+_refreshLockedStatus:
+  AX16
+  lda this.flags
+  and.w #EXIT.LOCKED_BY.MASK
+  asl a
+  tax
+  jmp (_lockedBy.lut,x)
+
+_checkLockFlip:
+  AX16
+  ;flip lock?
+  lda this.flags
+  bit.w #EXIT.REVERSE_LOCK
+  beq +
+    lda this.flags
+    eor.w #EXIT.STATUS.LOCKED
+    sta this.flags
+
++
+  rts
+
+_lockedBy.lut:
+  .dw _lockedBy.none
+  .dw _lockedBy.item
+  .dw _lockedBy.bit_and
+  .dw _lockedBy.bit_or
+  .dw _lockedBy.attack
+  .dw _lockedBy.enemy
+  .dw _lockedBy.persistent_flag
+  .dw _lockedBy.none
+
+_lockedBy.none:
+  AX16
+  lda.w #EXIT.STATUS.LOCKED
+  trb this.flags
+
+  jsr _checkLockFlip
+  lda.w #EXIT.ANIMATION.NONE
+  jmp _setGraphicalRepresentation
+
+_lockedBy.item:
+  AX16
+  jsr _checkLockFlip
+
+  lda.w #EXIT.ANIMATION.NONE
+  jmp _setGraphicalRepresentation
+
+_lockedBy.bit_and:
+  AX16
+  lda.w #EXIT.STATUS.LOCKED
+  tsb this.flags
+
+  lda.w GLOBAL.level.bitflags
+  and this.lockedBy
+  cmp this.lockedBy
+  bne +
+    lda.w #EXIT.STATUS.LOCKED
+    trb this.flags
+
++
+  jsr _checkLockFlip
+  lda.w #EXIT.ANIMATION.NONE
+  jmp _setGraphicalRepresentation
+
+
+_lockedBy.bit_or:
+  AX16
+  lda.w #EXIT.STATUS.LOCKED
+  tsb this.flags
+
+  lda.w GLOBAL.level.bitflags
+  and this.lockedBy
+  beq +
+    lda.w #EXIT.STATUS.LOCKED
+    trb this.flags
+
++
+  jsr _checkLockFlip
+  lda.w #EXIT.ANIMATION.NONE
+  jmp _setGraphicalRepresentation
+
+_lockedBy.attack:
+  rts
+
+_lockedBy.enemy:
+  AX16
+  lda.w #EXIT.STATUS.LOCKED
+  tsb this.flags
+  jsr iterator.library.reset
+  lda this.lockedBy
+  beq ++
+    ;specific enemy
+    jsr iterator.library.each.byId
+    bcs +
+      lda.w #EXIT.STATUS.LOCKED
+      trb this.flags
+
++
+    bra +++
+
+++
+  ;any enemy
+  lda.w #OBJECT.PROPERTIES.isEnemy
+  jsl extern.iterator.each.byProperties
+  bcs +
+    lda.w #EXIT.STATUS.LOCKED
+    trb this.flags
+
++
++++
+  jsr _checkLockFlip
+
+  lda.w #SPRITE.exit.PTR
+  jmp _setGraphicalRepresentation
+
+_lockedBy.persistent_flag:
+  lda.w #EXIT.STATUS.LOCKED
+  tsb this.flags
+
+  lda this.lockedBy
+  xba
+  ora.w #PERSISTENCY.SLOT.BITFLAG
+  pha    
+  CALL persistency.slot.get.MTD this.persistency 
+  plx
+  cmp #TRUE
+  bne +
+    lda.w #EXIT.STATUS.LOCKED
+    trb this.flags
+    
++
+
+  jsr _checkLockFlip
+  lda.w #EXIT.ANIMATION.NONE
+  jmp _setGraphicalRepresentation
+
+
+_setGraphicalRepresentation:
+  AX16
+  pha
+  lda this.flags
+  bit.w #EXIT.STATUS.LOCKED
+  beq ++
+    lda 1,s
+    jsr _checkStartAnimation
+    pla
+    rts
+
+++
+  ;unlocked
+  ldx.w #SPRITE.exit.PTR
+  lda this.flags
+  bit.w #EXIT.STATUS.UNLOCK_HIDDEN
+  beq +
+    ldx.w #EXIT.ANIMATION.NONE
+
++
+  txa
+  jsr _checkStartAnimation
+  pla
+  rts
+
+_checkStartAnimation:
+  AX16
+  cmp animation.id
+  beq ++
+
+  cmp.w #0
+  bne +
+    jsr sprite.library.deallocate
+    stz animation.id
+    sta animation.id
+    bra +++
+
++
+  pei (dimension.size.y)
+  pei (dimension.size.x)
+  jsr sprite.library.startAnimation
+  lda dimension.size.x
+  sta this.animation.size.x
+  lda dimension.size.y
+  sta this.animation.size.y
+  pla
+  sta dimension.size.x
+  pla
+  sta dimension.size.y
+
++++
+  ;explosion & screen shake for locked status change, but only if on screen and initialized
+ 
+  ;gets in the way of cutscene
+  lda this.flags
+  bit.w #EXIT.STATUS.INITIALIZED
+  beq ++
+    ;don't do explosion thing if locked by enemy (distracting)
+    bit.w #EXIT.LOCKED_BY.ENEMY
+    bne ++
+
+++
+  rts
+
+
+_takeExit:
+  AX16
+  pei (this.target.player.pos.y)
+  pei (this.target.player.pos.x)
+  pei (iterator.target+2)
+  pei (iterator.target)
+  pei (this.target.level)
+  pei (this.flags)
+  pei (this.target.script)
+  NEW Script.CLS.PTR this.scriptObj exit
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  ldx this.scriptObj
+  ldy this.scriptObj+2
+  rts
+
+  METHOD forceExit
+  jmp _takeExit
+
+  METHOD pause
+  rts
+
+  METHOD kill
+  lda animation.id
+  beq +
+    jmp sprite.library.kill
+
++
+  jmp object.library.kill
+
+  METHOD disable
+  lda animation.id
+  beq +
+    jsr sprite.library.disable
+
++
+  rts
+
+  METHOD enable
+  lda animation.id
+  beq +
+    jsr sprite.library.enable
+
++
+  rts
+
+
+  METHOD oncommand
+
+  clc
+  rts
+
+  /**
+  * @param 1, 8bit: class id of caller 
+  */
+  METHOD tryExit
+  ;dont trigger again as long as script object is still running
+  ldx.w #this.scriptObj
+  jsr core.object.exists
+  bcs +
+    lda this.flags
+    bit.w #EXIT.STATUS.LOCKED
+    bne +
+          jsr _takeExit
+          sec
+          rts
+
++
+  clc
+  rts        
+
+
+
+  CLASS level.exit oncommand forceExit tryExit
+.ends	
+	

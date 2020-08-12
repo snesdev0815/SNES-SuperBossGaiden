@@ -1,0 +1,314 @@
+/**
+* Display translucent textbox with HDMA window fade-in/out
+*
+*/
+
+	SCRIPT textbox
+
+	.redef obj.vwf hashPtr.1
+	.redef obj.parser hashPtr.2
+	.redef obj.hdma.window hashPtr.3
+	.redef obj.fixedColor hashPtr.4
+	.redef obj.cursor hashPtr.5
+
+	.redef _controller.id this._tmp
+	.redef _dialogue.id.0 script.args
+	.redef _dialogue.id.1 script.args+2
+	.redef _dialogue.id.2 script.args+4
+	.redef _dialogue.id.3 script.args+6
+	.redef _dialogue.id.4 script.args+8
+
+
+	.redef TEXTLAYER.ALLOCATION.SIZE $900
+
+	;init hdma effect stuff
+	SCRIPT_NEW_TRY fixedColor.CLS.PTR obj.fixedColor
+	bcs +
+		DIE
++	
+	lda.w #FIXED_COLOR.BLACK
+	SCRIPT_CALL fixedColor.set.MTD obj.fixedColor
+
+	lda.w #FIXED_COLOR.TEXTBOX
+	SCRIPT_CALL fixedColor.fadeTo.MTD obj.fixedColor
+
+	sep #$20
+
+	;setup color window add to mainscreen
+	lda #(WOBJSEL_COL_W1_ENABLE | WOBJSEL_COL_W2_ENABLE)
+	sta.w windowObjSel
+
+	lda #WOBJLOG_COL_OR
+	sta.w windowObjLogic
+
+	lda #(CGWSEL_CLIP_COL_NEVER | CGWSEL_NO_COL_MATH_OUTSIDE)
+	sta.w colorAdditionSelect
+
+	lda #(CGADSUB_BAC_ENABLE | CGADSUB_BG2_ENABLE | CGADSUB_BG1_ENABLE | CGADSUB_HALF_COL)
+	sta.w CgadsubConfig
+	stz.w SubScreen
+	rep #$31
+
+	SCRIPT_NEW_TRY hdma.windowAnimation.CLS.PTR obj.hdma.window HDMA.textbox_fadein.PTR
+	bcs +
+		DIE
++
+	LOOP 30
+	LOOP
+
+	SAVE
+
+	;init textbox
+	SCRIPT_NEW_TRY background.textlayer.vwf.CLS.PTR obj.vwf TEXTLAYER.ALLOCATION.SIZE BG.LAYER.2 1 1
+	bcs +
+		DIE
++
+	pei (obj.vwf)
+	pei (obj.vwf+2)
+	SCRIPT_NEW_TRY vwf.parser.CLS.PTR obj.parser
+	pla
+	pla
+	bcs +
+		DIE
++
+
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+    	rts
+
++
+	;draw text
+	pea VOID
+	pea 32
+	pea 72
+	pea 176
+	pea FONT.big_2bpp.PTR
+	pei (_dialogue.id.0)
+	SCRIPT_CALL vwf.parser.print.MTD obj.parser
+	pla
+	pla
+	pla
+	pla
+	pla
+	pla
+
+	;wait for print complete
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+		rts
+
++
+
+
+	lda _dialogue.id.1
+	bne +
+		jmp _endBox2
++
+
+	CUTSCENE_WAIT
+	SCRIPT_CALL background.textlayer.vwf.kill.MTD obj.vwf
+	SCRIPT_CALL vwf.parser.kill.MTD obj.parser
+	SCRIPT_NEW_TRY background.textlayer.vwf.CLS.PTR obj.vwf TEXTLAYER.ALLOCATION.SIZE BG.LAYER.2 1 1
+	bcs +
+		DIE
++
+	pei (obj.vwf)
+	pei (obj.vwf+2)
+	SCRIPT_NEW_TRY vwf.parser.CLS.PTR obj.parser
+	pla
+	pla
+	bcs +
+		DIE
++	
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+    	rts
++
+	;draw text
+	pea VOID
+	pea 32
+	pea 72
+	pea 176
+	pea FONT.big_2bpp.PTR
+	pei (_dialogue.id.1)
+	SCRIPT_CALL vwf.parser.print.MTD obj.parser
+	pla
+	pla
+	pla
+	pla
+	pla
+	pla
+
+	;wait for print complete
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+		rts
+
++
+
+	lda _dialogue.id.2
+	bne +
+		jmp _endBox2
++
+	CUTSCENE_WAIT
+	SCRIPT_CALL background.textlayer.vwf.kill.MTD obj.vwf
+	SCRIPT_CALL vwf.parser.kill.MTD obj.parser
+	SCRIPT_NEW_TRY background.textlayer.vwf.CLS.PTR obj.vwf TEXTLAYER.ALLOCATION.SIZE BG.LAYER.2 1 1
+	bcs +
+		DIE
++
+	pei (obj.vwf)
+	pei (obj.vwf+2)
+	SCRIPT_NEW_TRY vwf.parser.CLS.PTR obj.parser
+	pla
+	pla
+	bcs +
+		DIE
++	
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+    	rts
++
+	;draw text
+	pea VOID
+	pea 32
+	pea 72
+	pea 176
+	pea FONT.big_2bpp.PTR
+	pei (_dialogue.id.2)
+	SCRIPT_CALL vwf.parser.print.MTD obj.parser
+	pla
+	pla
+	pla
+	pla
+	pla
+	pla
+
+	;wait for print complete
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+		rts
+
++
+
+	lda _dialogue.id.3
+	bne +
+		jmp _endBox2
++
+	CUTSCENE_WAIT
+	SCRIPT_CALL background.textlayer.vwf.kill.MTD obj.vwf
+	SCRIPT_CALL vwf.parser.kill.MTD obj.parser
+	SCRIPT_NEW_TRY background.textlayer.vwf.CLS.PTR obj.vwf TEXTLAYER.ALLOCATION.SIZE BG.LAYER.2 1 1
+	bcs +
+		DIE
++
+	pei (obj.vwf)
+	pei (obj.vwf+2)
+	SCRIPT_NEW_TRY vwf.parser.CLS.PTR obj.parser
+	pla
+	pla
+	bcs +
+		DIE
++	
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+    	rts
++
+	;draw text
+	pea VOID
+	pea 32
+	pea 72
+	pea 176
+	pea FONT.big_2bpp.PTR
+	pei (_dialogue.id.3)
+	SCRIPT_CALL vwf.parser.print.MTD obj.parser
+	pla
+	pla
+	pla
+	pla
+	pla
+	pla
+
+	;wait for print complete
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+		rts
+
++
+
+	lda _dialogue.id.4
+	bne +
+		jmp _endBox2
++
+	CUTSCENE_WAIT
+	SCRIPT_CALL background.textlayer.vwf.kill.MTD obj.vwf
+	SCRIPT_CALL vwf.parser.kill.MTD obj.parser
+	SCRIPT_NEW_TRY background.textlayer.vwf.CLS.PTR obj.vwf TEXTLAYER.ALLOCATION.SIZE BG.LAYER.2 1 1
+	bcs +
+		DIE
++
+	pei (obj.vwf)
+	pei (obj.vwf+2)
+	SCRIPT_NEW_TRY vwf.parser.CLS.PTR obj.parser
+	pla
+	pla
+	bcs +
+		DIE
++	
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+    	rts
++
+	;draw text
+	pea VOID
+	pea 32
+	pea 72
+	pea 176
+	pea FONT.big_2bpp.PTR
+	pei (_dialogue.id.4)
+	SCRIPT_CALL vwf.parser.print.MTD obj.parser
+	pla
+	pla
+	pla
+	pla
+	pla
+	pla
+
+	;wait for print complete
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+		rts
+
++
+
+_endBox2:
+	CUTSCENE_WAIT
+
+	;debounce
+	SLEEP 3
+
+	SCRIPT_CALL background.textlayer.vwf.kill.MTD obj.vwf
+	SCRIPT_CALL vwf.parser.kill.MTD obj.parser
+	SCRIPT_CALL hdma.windowAnimation.startAnimation.MTD obj.hdma.window HDMA.textbox_fadeout.PTR
+
+
+	SLEEP 10
+
+	sep #$20
+	;setup color window add to mainscreen
+	stz.w CgadsubConfig
+	stz.w SubScreen
+	rep #$31
+
+	DIE
+  

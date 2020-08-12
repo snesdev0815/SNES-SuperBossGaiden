@@ -1,0 +1,293 @@
+/**
+* wram allocation manager
+*
+* dynamically de/allocates a couple of wram blocks
+* primary use is having a persistent, non-moving chunk of data to dma from/to
+*
+*/
+
+
+.include "src/core/allocate_wram.h"
+.section "allocate_wram"
+
+core.wram.init:
+  AX16
+  php
+  sep #$20
+  ;clear block buffer
+  lda #WRAM.CLEAR_PATTERN.ZERO
+  ldy.w #WRAM_ALLOCATE.GLOBAL.END - WRAM_ALLOCATE.GLOBAL.START
+  ldx.w #WRAM_ALLOCATE.GLOBAL.START
+  jsr ClearWRAM
+
+  ;clear actual wram buffer
+  lda #WRAM.CLEAR_PATTERN.ZERO
+  ldy.w #GLOBAL.wramBuffer.end - GLOBAL.wramBuffer.start
+  ldx.w #GLOBAL.wramBuffer.start
+  jsr ClearWRAM
+
+  stz.w GLOBAL.currentWramAllocationId
+  rep #$31
+  lda.w #$aa55
+  sta.w GLOBAL.wramAllocation.dummy.start
+  sta.w GLOBAL.wramAllocation.dummy.end
+  plp
+  rts
+
+
+
+/*
+this is way too slow, takes ~90 scanlines
+-optimization ideas:
+  -have "last" pointer
+*/
+/**
+* attempt allocating desired wram space
+*
+* @param x <int,16bit>  desired size of allocated block in bytes.
+*
+* @return a <int,8bit>  allocation block id
+* @return x <int,16bit> wram start adress, relative to buffer
+* @return c <bool>  true if allocation succeeded
+*/
+core.wram.allocate:
+  AX16
+  cpx.w #0
+  bne +
+    TRIGGER_ERROR E_VallocInvalidLength
+
++ stx.w GLOBAL.wramAllocation.input.length
+
+  jsl extern.allocate_wram.seek_free
+  bcs +
+    ;allocation failed, not enough wram space left
+    clc
+    rts
+
++ 
+  tya
+  and.w #$ff
+  xba     ;allocation blocksize : $100
+
+  sta.w GLOBAL.wramAllocation.temp.start
+
+  jsl extern.allocate_wram.getID
+
+  ldx.w GLOBAL.wramAllocation.temp.start
+
+  sec
+  rts
+  
+.ends  
+
+.base BSL
+.bank BANK.DATA
+.section "extern.allocate_wram" superfree
+
+/*
+-never use byte size, only block size
+-one unrolled loop to seek first free block
+-one unrolled loop to check if requested blocklength free
+*/
+extern.allocate_wram.seek_free:
+  AX16
+  lda.w GLOBAL.wramAllocation.input.length
+  xba     ;allocation blocksize : $100
+  and.w #$ff
+  sta.w GLOBAL.wramAllocation.temp.length
+
+  lda.w GLOBAL.wramAllocation.input.length
+  bit.w #WRAM_ALLOCATION_BLOCKSIZE-1
+  beq +
+    inc.w GLOBAL.wramAllocation.temp.length
+
++
+; GLOBAL.wramAllocation.temp.length now contains requested blocksize
+  stz.w GLOBAL.wramAllocation.temp.start
+-
+    lda.w GLOBAL.wramAllocation.temp.start
+    asl a
+    tax
+    sep #$20
+    jsr (_seekFree.lut,x)
+    rep #$30
+    bcs +
+      ;allocation failed, end of wram reached
+      rtl
+
++
+    tya
+    adc.w GLOBAL.wramAllocation.temp.length
+    cmp.w #WRAM_ALLOCATION_BLOCKS
+    bcc +
+      ;allocation failed, end of wram reached
+      clc
+      rtl
+
++
+    ;y now contains first free block, check if length suffices
+    lda.w #WRAM_ALLOCATION_BLOCKS
+    sec
+    sbc.w GLOBAL.wramAllocation.temp.length
+    asl a
+    tax
+    sep #$20
+    jsr (_seekLengthFree.lut,x)
+    rep #$30
+    ;fail? try again. GLOBAL.wramAllocation.temp.start must have been updated in above function
+    bcc -
+
++
+  ;success, return block id in y
+  rtl
+
+;reverse
+;if block occupied, cancel and set GLOBAL.wramAllocation.temp.start to current +1
+.macro SEEK_LENGTH_FREE_ENTRY
+_seekLengthFree.entry.\@:
+  lda.w (GLOBAL.wramAllocationBlocks&$ffff)+(WRAM_ALLOCATION_BLOCKS-\@),y
+  beq +
+    tya
+    sec ;+1
+    adc.b #WRAM_ALLOCATION_BLOCKS-\@
+    sta.w GLOBAL.wramAllocation.temp.start
+    clc
+    rts
+
++  
+.endm
+
+/**
+* go through wram blocks and return block start adress if successful
+* @param GLOBAL.wramAllocation.input.length requested length
+* @return carry<bool> true if free block area found
+* @return y<int,16bit>  block start id
+*
+*/
+  A8
+.rept WRAM_ALLOCATION_BLOCKS
+  SEEK_LENGTH_FREE_ENTRY
+.endr
+  sec
+  rts
+
+.macro SEEK_LENGTH_FREE_LUT
+  .dw _seekLengthFree.entry.\@
+.endm
+
+_seekLengthFree.lut:
+.rept WRAM_ALLOCATION_BLOCKS
+  SEEK_LENGTH_FREE_LUT
+.endr
+
+
+.macro SEEK_FREE_ENTRY
+_seekFree.entry.\@:
+  lda.w (GLOBAL.wramAllocationBlocks&$ffff)+\@
+  bne +
+    ldy.w #\@
+    sec
+    rts
++  
+.endm
+
+  A8
+.rept WRAM_ALLOCATION_BLOCKS
+  SEEK_FREE_ENTRY
+.endr
+  clc
+  rts
+
+.macro SEEK_FREE_LUT
+  .dw _seekFree.entry.\@
+.endm
+
+_seekFree.lut:
+.rept WRAM_ALLOCATION_BLOCKS
+  SEEK_FREE_LUT
+.endr
+
+/**
+* go through wram blocks check if input id is already used
+*
+* @param a<int,8bit>  block id
+* @return carry<bool>   true if block id already in use
+*
+*/
+.macro IS_ID_USED
+  .accu 8
+  cmp.w (GLOBAL.wramAllocationBlocks&$ffff)+\@
+  bne +
+    jmp extern.allocate_wram.usedID
++
+.endm
+
+extern.allocate_wram.getID:
+  AX16
+  lda.w GLOBAL.wramAllocation.temp.start
+  xba     ;allocation blocksize : $100
+  and.w #$ff
+  tay
+
+  ldx.w GLOBAL.wramAllocation.temp.length
+
+  sep #$20
+  lda.w GLOBAL.currentWramAllocationId
+extern.allocate_wram.usedID:
+  inc a
+  bne +
+    ;allocation id must be non-zero
+    inc a
+    
++
+  .rept WRAM_ALLOCATION_BLOCKS
+    IS_ID_USED
+  .endr
+  sta.w GLOBAL.currentWramAllocationId
+- sta.w GLOBAL.wramAllocationBlocks,y
+  iny
+  dex
+  bne -
+
+  rep #$31
+  rtl
+
+/**
+* deallocate wram blocks.
+*
+* @param a<int,8bit>  allocation id of blocks to be deallocated
+* @return c<bool>   set if deallocation was successful
+*/
+.macro DELETE_ID
+  .accu 8
+  cmp.w (GLOBAL.wramAllocationBlocks&$ffff)+\@
+  bne +
+    sta 1,s
+    stz.w (GLOBAL.wramAllocationBlocks&$ffff)+\@
++
+.endm
+
+extend.wram.deallocate:
+  AX16
+  sep #$20
+  cmp.w GLOBAL.currentWramAllocationId
+  bne +
+    ;only chance to decrease allocation id is when topmost id gets deallocated
+    dec.w GLOBAL.currentWramAllocationId
+
++
+  pea 0
+  .rept WRAM_ALLOCATION_BLOCKS
+    DELETE_ID
+  .endr
+  pla
+  pla
+  sec
+  bne +
+    clc
+
++  
+  rep #$30
+  rtl
+
+.ends

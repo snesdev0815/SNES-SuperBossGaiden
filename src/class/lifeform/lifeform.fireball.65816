@@ -1,0 +1,96 @@
+/**
+* Fireball enemy that bounces around
+* 
+*/
+
+.include "src/class/lifeform/lifeform.fireball.h"
+.section "lifeform.fireball"
+
+  METHOD init
+  lda.w #SPRITE.fireball.PTR
+  ldx.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT | LIFEFORM.ABILITIES.JUMP)
+  jsl extern.lifeform.initialize
+
+  lda.w #2
+  sta lifeform.bouncyness
+
+  lda OBJECT.CALL.ARG.6,s
+  bne +
+    lda.w #300
+
++
+  sta this.age
+
+  lda.w #10
+  sta lifeform.hitpoints
+  
+  lda #lifeform.turn.CLB
+  sta lifeform.callback.touch.wall
+  lda #fireball.jump.CLB
+  sta lifeform.callback.touch.floor
+  rts
+
+  CALLBACK fireball.jump
+  sep #$20
+  lda #LIFEFORM.STATE.JUMPING
+  sta lifeform.state
+
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+
+  lda #LIFEFORM.JUMP.AGE
+  sta lifeform.action.age
+  rep #$31
+
+  lda #FIREBALL.JUMP.IMPULSE
+  sta dimension.speed.y
+
+  lda #FIREBALL.JUMP.ACCEL
+  sta dimension.acceleration.y
+
+  ;overcome ground traction
+  dec dimension.position.y+1
+  rts
+
+  METHOD play
+  lda this.age
+  bne +
+    jsl extern.movement.explodeEnemy
+    rts
+
++
+  dec this.age
+  jsl extern.lifeform.evalOffscreen
+  rts
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +  
+    lda.w #AUDIO.EFFECT.BLOCK
+    jsr interface.dimension.playSoundEffect
+    clc
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.THROW
+  bne +
+    jsl extern.lifeform.onThrow
+    rts
+
++
+  clc
+  rts
+
+
+  CLASS lifeform.fireball oncommand
+
+.ends

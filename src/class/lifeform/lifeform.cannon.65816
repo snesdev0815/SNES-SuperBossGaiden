@@ -1,0 +1,167 @@
+/**
+* A cannon enemy that periodically shoots a object (typically another enemy)
+* 
+*/
+
+.include "src/class/lifeform/lifeform.cannon.h"
+.section "lifeform.cannon"
+
+  METHOD init
+  lda.w #SPRITE.cannon.dummy.PTR
+  ldx.w #0
+  jsl extern.lifeform.initialize
+
+  lda OBJECT.CALL.ARG.6,s
+  bne +
+    lda.w #lifeform.bower.CLS.PTR
++  
+  sta this.payload.class
+
+  lda #LIFEFORM.DIAMETER.DEFAULT*2
+  sta dimension.collision.diameter
+
+  stz lifeform.speed
+
+  lda.w #5
+  sta lifeform.hitpoints
+
+  lda.w #1
+  sta lifeform.bouncyness
+
+  lda.w #VOID
+  sta this.payload.object
+
+  lda OBJECT.CALL.ARG.7,s
+  sta this.arg.0  
+  rts
+
+
+  METHOD play
+  stz lifeform.controller.current.actions
+
+  lda animation.timer
+  and.w #$f
+  beq +
+    jmp +++
+    
++  
+  jsl extern.lifeform.turnToTarget
+
+
+  lda lifeform.state
+  and.w #$ff
+  cmp.w #LIFEFORM.STATE.WALKING
+  beq ++
+  cmp.w #LIFEFORM.STATE.CUSTOMANIMATION
+  bne +
+
+++
+    ldx.w #this.payload.object
+    jsr core.object.exists
+    bcs +
+      lda lifeform.action.age
+      and.w #$ff
+      bne ++
+        ;start animation
+        sep #$20
+        lda.b #LIFEFORM.STATE.CUSTOMANIMATION
+        sta lifeform.state
+        lda #CANNON.SHOOT.AGE
+        sta lifeform.action.age    
+        rep #$31
+        lda #LIFEFORM.SPRITE_ANIMATION.PUNCH1.RIGHT
+        jsl extern.movement.startAnimation
+        bra +
+
+++
+      ldy this.payload.class
+      ldx #this.payload.object
+      pei (this.arg.0)
+      pea 0
+      pea 0
+      pea 0
+      lda dimension.position.y+1
+      clc
+      adc dimension.collision.basepoint.y
+      pha
+      lda dimension.position.x+1
+      clc
+      adc dimension.collision.basepoint.x
+      pha   
+      jsr core.object.create.try
+      pla
+      pla
+      pla
+      pla
+      pla
+      pla
+      bcc +
+        jsr _throw
+
++
++++
+  jsl extern.lifeform.evalOffscreen
+  rts
+
+_throw:
+  AX16
+      ldx.w #MATH.315_DEG+10 ;right
+      lda animation.flags.static
+      bit.w #ANIMATION.FLAGS.X_MIRROR
+      beq ++
+        ldx.w #MATH.225_DEG-10 ;left
+
+
+++
+      phx
+      pea 2
+      pei (iterator.self)
+      pei (iterator.self + 2)
+      CALL lifeform.library.oncommand.MTD this.payload.object LIFEFORM.COMMAND.THROW
+      plx
+      plx
+      plx
+      pla
+      
+      ;become invincible for a bit after throw so that throwable doesnt hurt self
+      sep #$20
+      lda.b #LIFEFORM.THROW_INVINCIBLE.AGE
+      sta lifeform.invincibility.invisible.timer
+      rep #$31
+  rts  
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +
+    lda lifeform.invincibility.timer
+    ora lifeform.invincibility.invisible.timer
+    and.w #$ff
+    bne +
+      jsl extern.lifeform.onAttack
+      rts
+
++
+  ;can only be thrown (=bomb explode), but not be grabbed
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.THROW
+  bne +
+    jsl extern.lifeform.onThrow
+    rts
+
++
+  clc
+  rts
+
+
+  CLASS lifeform.cannon oncommand
+.ends	
+	

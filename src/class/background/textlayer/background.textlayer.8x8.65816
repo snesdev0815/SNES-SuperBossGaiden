@@ -1,0 +1,192 @@
+/**
+* A background for printing strings to using fixed-width 8x8 pixel font.
+*
+*/
+
+.include "src/class/background/textlayer/background.textlayer.8x8.h"
+.section "background.textlayer.8x8"
+
+  METHOD init
+  sep #$20
+  lda.b #:ExcFontTiles      ;source bank  
+  sta textlayer.font.tiles+2
+  lda.b #:ExcFontPal      ;source bank  
+  sta textlayer.font.palette+2
+
+  rep #$31
+
+  lda.w #ExcFontTiles
+  sta textlayer.font.tiles
+  lda.w #ExcFontTiles.LEN
+  sta textlayer.font.tiles.length
+
+  lda.w #ExcFontPal
+  sta textlayer.font.palette
+  lda.w #ExcFontPal.LEN
+  sta textlayer.font.palette.length
+
+  jsr background.library.textlayer.allocateMemory
+
+  jsr background.library.textlayer.uploadFont
+
+  jsr _clear
+  jsr _flush
+
+  lda.w #ANIMATION.FLAGS.IS_MAINSCREEN
+  tsb animation.flags.static
+  
+  lda.b textlayer.bg
+  jmp background.library.makePhysical
+
+
+  METHOD play
+  rts
+
+  METHOD kill
+  lda.b textlayer.bg
+  jmp background.library.kill
+
+  METHOD clear
+  jsr core.string.reset
+
+  lda #core.string.print.textlayer.8x8.CLB
+  ldx iterator.self
+  ldy iterator.self+2
+  jsr core.string.registerCallback
+
+  ldy background.ramBuffer.length
+  
+  lda background.ramBuffer.start
+  clc
+  adc #GLOBAL.wramBuffer.start
+  tax
+  jmp ClearWRAM
+
+  METHOD print
+  jsr core.string.parse_from_object
+  rts
+
+/**
+* delegation
+*
+* @param 1<int, 8bit>    x-position in pixels (floored to tile resolution)
+* @param 2<int, 8bit>    y-position in pixels (floored to tile resolution)
+*/
+  METHOD setCursorPosition
+  lda OBJECT.CALL.ARG.1,s
+  tax
+  lda OBJECT.CALL.ARG.2,s
+  tay
+  
+  jmp core.string.setPosition
+
+  METHOD getCursorPosition
+  jsl extend.string.getPosition
+  rts
+
+  METHOD flush
+  jmp background.library.uploadTilemap
+
+
+  ;starts in string context:
+  CALLBACK core.string.print.textlayer.8x8
+    AX16
+    ;check whether context object moved/exists
+    ldx #static.string.render.context
+    jsr core.object.exists
+    bcs +
+      TRIGGER_ERROR E_ObjNotFound
+
++
+    lda static.string.render.context+3
+    INDEX_TO_HASH_POINTER
+    tax
+    lda.l OopStack.dp,x
+    sta static.string.render.dp
+
+    ldy #0      
+-
+
+        lda [static.string.current.pointer],y
+        and #$ff
+        cmp #' '    ;lower than whitespace??
+        bcs ++
+            jsl extend.string.printCommand
+
+        bcs +
+        bra -
+
+++
+
+          phy
+          phd
+          pei (static.string.render.dp)
+          pld
+
+          ;we're now in textlayer object context!
+          ;current char in a
+            pha
+            pea 0
+            ;get y-pos, divide by 8 to get tileposition
+            lda.w directPage.static.string + static.string.cursor.position.y
+            lsr a
+            lsr a
+            lsr a
+
+            ;multiply by 32 to get byte position in buffer
+            asl a
+            asl a
+            asl a
+            asl a
+            asl a
+            sta 1,s
+
+            ;get x-pos, divide by 8 to get tileposition
+            lda.w directPage.static.string + static.string.cursor.position.x
+            and.w #$ff
+            lsr a
+            lsr a
+            lsr a
+
+            ;add y-pos to get total byte position in buffer
+            clc
+            adc 1,s
+            ;word-sized entries
+            asl a
+            clc
+            adc background.ramBuffer.start
+            tay
+            pla
+            pla
+
+
+            sec
+            sbc.w #TEXTLAYER.WHITESPACE  ;shift back, whitespace starts at char 0 instead of $20
+            ora.w #BG.FORMAT.PRIORITY   ;set priority
+            sta.w GLOBAL.wramBuffer.start,y
+
+            lda textlayer.font.tiles.start.id
+            and.w #$ff
+            clc
+            adc.w GLOBAL.wramBuffer.start,y
+            sta.w GLOBAL.wramBuffer.start,y
+
+          ;returning to string context:
+          pld
+          ply
+
+          lda static.string.cursor.position.x
+          clc
+          adc.w #GLOBAL.TEXTLAYER.8x8.FONT.SIZE.X
+          sta static.string.cursor.position.x
+
+          iny
+          bra -
+
++
+    rts
+
+  CLASS background.textlayer.8x8 clear print flush setCursorPosition getCursorPosition
+
+.ends	
+	

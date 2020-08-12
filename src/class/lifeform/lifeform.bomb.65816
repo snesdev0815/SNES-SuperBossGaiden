@@ -1,0 +1,91 @@
+/**
+* A bomb enemy that blinks, then explodes after timeout
+* 
+*/
+
+.include "src/class/lifeform/lifeform.bomb.h"
+.section "lifeform.bomb"
+
+  METHOD init
+  lda.w #SPRITE.bomb.PTR
+  ldx.w #0
+  jsl extern.lifeform.initialize
+
+  lda.w #260
+  sta lifeform.speed
+
+  lda.w #1
+  sta lifeform.hitpoints
+
+  lda.w #2
+  sta lifeform.bouncyness
+
+  lda #lifeform.turn.CLB
+  sta lifeform.callback.touch.wall
+  lda #bomb.explode.CLB
+  sta lifeform.callback.touch.lifeform
+  rts
+
+
+  METHOD play
+  inc this.timer
+
+  lda this.timer
+  cmp.w #LEMON.EXPLODE.AGE
+  beq _explode
+  cmp.w #LEMON.EXPLODE.AGE*0.70
+  bcs +
+    stz.b animation.frame.current
+
++
+  jsl extern.lifeform.evalOffscreen
+  
+  ;always harmless, unless exploding
+  lda.w #OBJECT.PROPERTIES.hurts
+  trb iterator.properties
+  rts
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+  CALLBACK bomb.explode
+_explode:
+  AX16
+  lda.w #OBJECT.PROPERTIES.hurts
+  tsb iterator.properties
+
+  jsl extern.movement.explodeBomb
+  rts
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +
+    jmp _explode
+
++
+  cmp #LIFEFORM.COMMAND.GRAB
+  bne +
+    jsl extern.lifeform.onGrab
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.THROW
+  bne +
+    jsl extern.lifeform.onThrow
+    rts
+
++
+  clc
+  rts
+
+  METHOD setPosition
+  jmp lifeform.library.setBasepointPosition
+
+  CLASS lifeform.bomb oncommand
+.ends	
+	

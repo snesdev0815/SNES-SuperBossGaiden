@@ -1,0 +1,26 @@
+/**
+* Cutscene before reaching lobby room
+*
+*/
+
+	SCRIPT approachingLobby
+
+	.redef obj.script.slave hashPtr.1
+	.redef obj.hud this._tmp
+
+
+	SET_CUTSCENE_OPTIONAL
+
+	HUD_DISABLE obj.hud
+
+	SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.approachingLobby FALSE
+	WAIT_FOR obj.script.slave
+
+	SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.dontCare text.dialogue.doesntWreck FALSE
+	WAIT_FOR obj.script.slave
+  
+	HUD_ENABLE obj.hud
+
+
+  	CUTSCENE_WAIT
+	DIE

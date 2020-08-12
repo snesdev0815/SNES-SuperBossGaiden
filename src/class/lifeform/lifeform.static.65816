@@ -1,0 +1,97 @@
+/**
+* Non-moving, non-harming lifeform.
+* Usually comes in the form of computers, pianos, flower pots etc.
+* 
+*/
+
+.include "src/class/lifeform/lifeform.static.h"
+.section "lifeform.static"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.6,s
+  bne +
+    lda.w #SPRITE.computer.idle.PTR
+
++
+  ldx.w #0
+  jsl extern.lifeform.initialize
+
+  lda lifeform.animation.base
+  cmp.w #SPRITE.the_end.PTR
+  bne +
+    lda.w #32
+    sta lifeform.hitpoints
+
++
+  rts
+
+
+  METHOD play
+  stz lifeform.controller.current.actions
+  lda lifeform.animation.base
+  cmp.w #SPRITE.the_end.PTR
+  beq +
+    ;always harmless
+    jsl extern.lifeform.evalOffscreen
+    bra ++
+
++  
+  lda.w #ANIMATION.FLAGS.X_MIRROR
+  trb animation.flags.static
+
+  jsl extern.lifeform.eval
+
+  ;kill immediately
+  lda lifeform.hitpoints
+  bne ++
+    jsl extern.movement.bigExplosion
+    bra _kill
+
+++
+  ;always harmless
+  lda.w #OBJECT.PROPERTIES.hurts
+  jmp iterator.library.clearProperties
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +
+    jsl extern.lifeform.onAttack
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.GRAB
+  bne +
+    jsl extern.lifeform.onGrab
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.THROW
+  bne +
+    jsl extern.lifeform.onThrow
+    rts
+
++
+  clc
+  rts
+
+  METHOD setPosition
+  jmp lifeform.library.setBasepointPosition 
+
+  METHOD getAnimationBase
+  lda lifeform.animation.base
+  rts
+
+  CLASS lifeform.static oncommand getAnimationBase
+  CLASS lifeform.staticCutscene oncommand getAnimationBase
+  
+.ends	
+	

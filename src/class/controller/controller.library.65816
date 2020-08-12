@@ -1,0 +1,9 @@
+/**
+* Helper functions for controlling objects (typically player or enemies)
+*
+*/
+
+.include "src/class/controller/controller.library.h"
+.section "controller.library"
+
+.ends

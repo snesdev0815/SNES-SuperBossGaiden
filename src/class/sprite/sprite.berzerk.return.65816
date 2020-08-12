@@ -1,0 +1,79 @@
+/**
+* Coin for berzerk counter
+*
+*/
+
+.include "src/class/sprite/sprite.berzerk.return.h"
+.section "sprite.berzerk.return"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta.b dimension.position.x + 1
+
+  lda OBJECT.CALL.ARG.2,s
+  sta.b dimension.position.y + 1
+
+  lda OBJECT.CALL.ARG.3,s
+  sta.b this.value
+
+  lda.w #SPRITE.berzerk.return.PTR
+  jsr sprite.library.startAnimation
+
+  lda.w #BERZERK.RETURN.AGE
+  sta this.age
+
+  lda.w #64
+  sta.w dimension.collision.diameter
+
+  lda.w #ANIMATION.FLAGS.IS_LOOPING
+  tsb animation.flags.static
+
+  lda.w #OAM.PRIORITY.2
+  sta animation.buffer.flags
+  jsr iterator.library.reset
+
+  jmp sprite.library.toBaseline
+
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+
+  METHOD play
+  dec this.age
+  beq _kill  
+
+  lda.w #AUDIO.EFFECT.COIN
+  jsr sprite.library.bounce
+
+  ;start blinking before disappearing
+  lda this.age
+  cmp.w #BERZERK.RETURN.AGE/4
+  bcs +
+    ror a
+    bcs +
+      rts
++  
+  jmp sprite.library.playAnimation
+
+
+  METHOD kill
+  jmp sprite.library.kill
+  
+
+  METHOD disable
+  jmp sprite.library.disable
+
+
+  METHOD enable
+  jmp sprite.library.enable
+
+
+  METHOD getValue
+  lda this.value
+  rts
+  
+  CLASS sprite.berzerk.return getValue
+
+.ends	
+	

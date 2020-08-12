@@ -1,0 +1,462 @@
+/**
+* Boss player character
+*
+*/
+
+.include "src/class/lifeform/lifeform.player.h"
+.section "lifeform.player"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta.b dimension.position.x + 1
+
+  lda OBJECT.CALL.ARG.2,s
+  sta.b dimension.position.y + 1
+
+  lda #SPRITE.PLAYER.DEFAULT.SPEED
+  sta lifeform.speed
+
+  sep #$20
+
+  lda OBJECT.CALL.ARG.5,s
+  sta.b lifeform.controller.id
+
+  lda #LIFEFORM.CONTROLLER.HUMAN.MAIN
+  sta.b lifeform.controller.type
+
+  rep #$31
+  lda #SPRITE.boss.dummy.PTR
+  sta lifeform.animation.base
+
+  jmp lifeform.player.init
+
+
+lifeform.player.init:
+  AX16
+  ;set default targets
+  lda #(OBJECT.PROPERTIES.isCollidable | OBJECT.PROPERTIES.isEnemy | OBJECT.PROPERTIES.isLifeform)
+  sta lifeform.target.properties
+
+  ;initialize abilities
+  lda.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT | LIFEFORM.ABILITIES.MOVE.DOWN | LIFEFORM.ABILITIES.MOVE.UP | LIFEFORM.ABILITIES.JUMP | LIFEFORM.ABILITIES.DASH | LIFEFORM.ABILITIES.ATTACK | LIFEFORM.ABILITIES.GRABTHROW)
+  sta lifeform.abilities
+
+  lda.w #ANIMATION.FLAGS.IS_LOOPING
+  tsb animation.flags.static
+
+  lda.w #OAM.PRIORITY.2
+  sta animation.buffer.flags
+
+  lda.w #BOSS.POWER
+  sta lifeform.power
+
+  lda.w #1
+  sta lifeform.bouncyness
+
+  lda.w #$7fff
+  sta lifeform.hitpoints
+
+  lda lifeform.animation.base
+  jsr sprite.library.startAnimation
+  
+  ;set bg collision basepoint
+  lda dimension.size.x
+  lsr a
+  sta dimension.collision.basepoint.x
+
+  lda dimension.size.y
+  sec
+  sbc.w #4
+  sta dimension.collision.basepoint.y
+
+  lda #LIFEFORM.DIAMETER.DEFAULT
+  sta dimension.collision.diameter
+
+  ;make sure persistency object isnt accidently destroyed
+  lda.w #VOID
+  sta iterator.target
+  jsl extern.lifeform.init
+  jsl extern.lifeform.animate
+  jsr lifeform.player.refillBerzerk
+  NEW background.hud.CLS.PTR this.obj.hud
+  jmp lifeform.player.updateHud
+
+lifeform.player.refillBerzerk:
+  AX16
+  lda.w #LIFEFORM.BERZERK.MAX*0.5
+  sta lifeform.berzerk.counter  
+  rts
+
+  METHOD play
+  lda.w #$7fff
+  sta lifeform.hitpoints
+
+  stz lifeform.controller.current.actions
+  lda lifeform.target.properties
+  jsr lifeform.library.evaluate.alwaysOn
+
+  lda lifeform.controller.current.actions
+  jsl extern.lifeform.movement.evaluate
+  jsl extern.lifeform.animate
+
+  ;prevent camera glitch when player is grabbed while dying
+  lda lifeform.state
+  and.w #$ff
+  cmp.w #LIFEFORM.STATE.SUICIDE
+  bne +
+    lda.w #OBJECT.PROPERTIES.isGrabbable
+    trb iterator.properties
+
++
+  ;enter super mode?
+  lda lifeform.berzerk.counter
+  cmp.w #LIFEFORM.BERZERK.MAX
+  bcc +
+    lda.w #PLAYER.MODE.SUPER
+    sta lifeform.mode
+
++
+  ;regular
+  lda #SPRITE.PLAYER.DEFAULT.SPEED
+  sta lifeform.speed
+  lda.w #BOSS.POWER
+  sta lifeform.power
+
+  ;emit smoke if in super mode
+  lda lifeform.mode
+  beq +
+    lda.b animation.timer
+    ror a
+    bcc ++
+      ;only decrease down to 50% while in berzerk mode. cooldown timer, if you will.
+      lda lifeform.berzerk.counter
+      cmp.w #LIFEFORM.BERZERK.MAX*0.50
+      bcc ++
+        dec lifeform.berzerk.counter
+
+++ 
+    lda #SPRITE.PLAYER.DEFAULT.SPEED*1.4
+    sta lifeform.speed
+    lda.w #BOSS.POWER*2
+    sta lifeform.power
+
+    ;leave super mode?
+    lda lifeform.berzerk.counter
+    cmp.w #LIFEFORM.BERZERK.MAX*0.60
+    bcs ++
+        lda.w #PLAYER.MODE.NORMAL
+        sta lifeform.mode
+
+++
+
+    lda animation.timer
+    bit.w #$f
+    bne +
+      lda.w #SPRITE.smoke.PTR
+      ldx.w #0
+      ldy.w #-10
+      jsl extern.lifeform.sprite.rise
+
++  
+  jsr lifeform.player.checkHit
+
+  jsl extern.lifeform.checkBerzerkGet
+  bcc +
+    lda.w #AUDIO.EFFECT.COIN_HIGH
+    jmp interface.dimension.playSoundEffect
+
++
+  jmp lifeform.player.updateHud
+
+lifeform.player.checkHit:
+  AX16
+  lda animation.timer
+  and.w #$3
+  bne ++
+    ;check death
+    lda lifeform.berzerk.counter
+    bne +
+
+    ;dont trigger twice
+    lda lifeform.state
+    and.w #$ff
+    cmp.w #LIFEFORM.STATE.SUICIDE
+    beq +
+      stz dimension.acceleration.x
+      stz dimension.acceleration.y
+
+      sep #$20
+      lda #LIFEFORM.SUICIDE.AGE
+      sta lifeform.action.age
+
+      lda #LIFEFORM.STATE.SUICIDE
+      sta lifeform.state
+      rep #$31
+      jsl extern.lifeform.throw
+
++
+  lda lifeform.condition
+  and.w #$ff
+  cmp.w #LIFEFORM.CONDITION.ETHEREAL
+  beq +
+
+  lda lifeform.invincibility.timer
+  and.w #$ff
+  bne +
+
+  ora lifeform.invincibility.invisible.timer
+  and.w #$ff
+  bne +
+
+  lda.w GLOBAL.dialogueState
+  cmp.w #DIALOGUE.STATE.GAME_BEATEN
+  beq +
+  
+  lda lifeform.state
+  and.w #$ff
+  cmp.w #LIFEFORM.STATE.SUICIDE
+  beq +
+  cmp.w #LIFEFORM.STATE.SUPERPUNCH
+  beq +
+    jsr iterator.library.reset
+    lda lifeform.target.properties
+    and.w #OBJECT.PROPERTIES.isLifeform ~$ffff
+    ora.w #OBJECT.PROPERTIES.hurts
+    jsr collision.library.fromDiameter.toDiameter.byProperties
+    bcc +
+        jsr lifeform.player.getHurt
+
++
+++
+  rts  
+
+lifeform.player.getHurt:
+  AX16
+  ldx.w #iterator.target
+  jsr core.object.exists
+  bcc +
+        lda.w GLOBAL.gotHitCount
+        cmp.w #KILLCOUNT.MAX
+        bcs ++
+          inc.w GLOBAL.gotHitCount
+
+++        
+        CALL lifeform.library.getCollisionBasepoint.MTD iterator.target
+        jsr dimension.library.getTargetDirectionBasepoint
+        clc
+        adc.w #MATH.180_DEG
+        and.w #$ff
+        pha
+
+        stz dimension.acceleration.x
+        stz dimension.acceleration.y
+
+        lda.w #5
+        sta dimension.speed.x
+        sta dimension.speed.y
+
+        ;direction
+        lda 1,s
+        and.w #$ff
+        jsr core.math.cos
+        ldx dimension.speed.x
+        jsr core.math.mul
+        sta dimension.speed.x
+
+        lda 1,s
+        and.w #$ff
+        jsr core.math.sin
+        ldx dimension.speed.y
+        jsr core.math.mul
+        sta dimension.speed.y
+
+        sep #$20
+        lda #LIFEFORM.STATE.HURT
+        sta lifeform.state
+        lda.b #20
+        sta lifeform.action.age
+
+        lda.b #PLAYER.TIMER.INVINCIBLE
+        sta lifeform.invincibility.timer
+        rep #$31
+
+        ldx.w #AUDIO.EFFECT.DEATH
+        lda iterator.self
+        and.w #$ff
+        cmp.w #lifeform.player.CLS.PTR
+        beq +++
+          ldx.w #AUDIO.EFFECT.DEATH_HIGH
+
++++
+        txa
+        jsr interface.dimension.playSoundEffect
+
+        ;lose a bit of berzerk meter,
+        lda lifeform.berzerk.counter
+        sec
+        sbc.w #PLAYER.HURT.BERZERK_MINUS
+        bcs ++
+          lda.w #0
+
+++
+        sta lifeform.berzerk.counter
+        jsl extern.lifeform.throw
+
+        pla
+        sec
++        
+  rts
+
+lifeform.player.updateHud:
+  AX16
+  lda animation.timer
+  inc a
+  inc a
+  and.w #$f
+  bne +
+    lda lifeform.berzerk.counter
+    cmp lifeform.berzerk.counter.last
+    beq +
+      pei (lifeform.controller.id)
+      pei (lifeform.mode)
+      lsr a
+      lsr a
+      lsr a
+      pha
+      CALL background.hud.updateStatus.MTD this.obj.hud
+      pla
+      pla
+      pla
+      bcc +
+        lda lifeform.berzerk.counter
+        sta lifeform.berzerk.counter.last
+
++
+  rts
+
+  METHOD pause
+  jsl extern.lifeform.setEvaluateWait
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+  ;custom, make sure to immediately set focus after external position change (so camera doesn't scroll over whole playfield)
+ METHOD setPosition
+lifeform.player.setPosition:
+  AX16    
+  lda OBJECT.CALL.ARG.1,s
+  stz.b dimension.position.x
+  sta.b dimension.position.x + 1
+
+  lda OBJECT.CALL.ARG.2,s
+  stz.b dimension.position.y  
+  sta.b dimension.position.y + 1
+
+  ;dont do immediate focus if being grabbed currently. kinda stupid hack... would be better to do this explicitly via argument
+  lda lifeform.state
+  and.w #$ff
+  cmp.w #LIFEFORM.STATE.GRABBED
+  beq +
+    jsl extern.lifeform.init
+    rts
+
++
+  jsl extern.lifeform.movement.initPosition
+  rts
+
+
+  METHOD oncommand
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.THROW
+  bne +
+    jsl extern.lifeform.onThrow
+    rts
+
++  
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +
+    lda lifeform.invincibility.timer
+    and.w #$ff
+    bne +
+
+    ora lifeform.invincibility.invisible.timer
+    and.w #$ff
+    bne +
+
+    lda lifeform.state
+    and.w #$ff
+    cmp.w #LIFEFORM.STATE.SUICIDE
+    beq +
+    cmp.w #LIFEFORM.STATE.SUPERPUNCH
+    beq +
+      lda OBJECT.CALL.ARG.2,s
+      sta iterator.target+2
+      lda OBJECT.CALL.ARG.3,s
+      sta iterator.target
+      jmp lifeform.player.getHurt
+
++
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.BERZERK_RETURN
+  bne +
+      lda OBJECT.CALL.ARG.2,s
+      clc
+      adc lifeform.berzerk.counter
+      cmp.w #LIFEFORM.BERZERK.MAX
+      bcc ++
+        lda.w #LIFEFORM.BERZERK.MAX
+++
+      sta lifeform.berzerk.counter
+
++
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.GRAB
+  bne +
+    jsl extern.lifeform.onGrab
+    rts
+
++
+  cmp.w #LIFEFORM.COMMAND.KNOCK_OUT
+  bne +
+    jsl extern.lifeform.onKnockOut
+    rts
+
++
+  cmp.w #LIFEFORM.COMMAND.GET_CAMERA_DATA
+  bne +
+    jsl extern.lifeform.getCameraData
+    rts
+    
++
+  cmp.w #LIFEFORM.COMMAND.SQUASH
+  bne +
+    stz lifeform.berzerk.counter
+    sec
+    rts
+
++
+  cmp.w #LIFEFORM.COMMAND.ORDER_ATTACK
+  bne +
+    jsl extern.movement.doKnockOut
+    sec
+    rts
+
++
+  clc
+  rts
+
+  METHOD disable
+  jmp sprite.library.disable
+
+  METHOD enable
+  jsl extern.lifeform.setEvaluateWait
+  jmp sprite.library.enable
+
+  METHOD getAnimationBase
+  lda lifeform.animation.base
+  rts
+
+  CLASS lifeform.player oncommand getAnimationBase
+
+.ends	

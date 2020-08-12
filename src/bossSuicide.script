@@ -1,0 +1,116 @@
+/**
+* Small cutscene when boss dies.
+* Employee reaction changes depending on progress in game.
+*
+*/
+
+  SCRIPT bossSuicide
+
+  .redef obj.script.slave hashPtr.1
+	.redef obj.hud this._tmp
+
+  SET_CUTSCENE_MANDATORY
+
+  ;mandatory cutscene. terminate existing cutscenes
+  SCRIPT_JSR iterator.library.reset
+-  
+  lda.w #OBJECT.PROPERTIES.isCutscene
+  SCRIPT_JSR iterator.library.others
+  bcc +
+    SCRIPT_CALL Script.oncommand.MTD iterator.target SCRIPT.COMMAND.EXIT
+    bra -
+
++
+
+  LOOP 5
+  LOOP
+
+  ;kill cutscenes that misbehave and didnt shut down nicely
+  SCRIPT_JSR iterator.library.reset
+-  
+  lda.w #OBJECT.PROPERTIES.isCutscene
+  SCRIPT_JSR iterator.library.others
+  bcc +
+    SCRIPT_CALL lifeform.library.kill.MTD iterator.target
+    bra -
+
++
+
+	CUTSCENE_ACQUIRE_OBJECT background.hud.CLS.PTR obj.hud
+
+  ;wait till other scripts have finished
+  SAVE
+    ldx #obj.hud
+    SCRIPT_JSR core.object.isDisabled
+    bcc +
+      rts
+
++
+  CUTSCENE_KILL_ENEMIES_AND_BOSSES
+  
+  lda.w GLOBAL.dialogueState
+  and.w #$7
+  asl a
+  tax
+  jmp (_dialogue.state.suicide.lut,x)
+
+_dialogue.state.suicide.lut:
+  .dw _dialogue.state.suicide.concerned
+  .dw _dialogue.state.suicide.shocked
+  .dw _dialogue.state.suicide.vengeance
+  .dw _dialogue.state.suicide.berzerk_philo
+  .dw _dialogue.state.suicide.berzerk_fausto
+  .dw _dialogue.state.suicide.ghost
+  .dw _dialogue.state.suicide.none
+  .dw _dialogue.state.suicide.none
+
+_dialogue.state.suicide.concerned:
+  AX16
+  ldx #obj.hud
+  SCRIPT_JSR core.object.disable
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.heartAttack FALSE
+  jmp _returnState
+
+_dialogue.state.suicide.shocked:
+  AX16
+  ldx #obj.hud
+  SCRIPT_JSR core.object.disable
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.bossSuicidePhilomena FALSE
+  jmp _returnState
+
+_dialogue.state.suicide.vengeance:
+  AX16
+  ldx #obj.hud
+  SCRIPT_JSR core.object.disable
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.bossSuicidePhilomenaJerk FALSE
+  jmp _returnState
+
+
+_dialogue.state.suicide.berzerk_philo:
+  AX16
+  ldx #obj.hud
+  SCRIPT_JSR core.object.disable
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.mwahaha FALSE
+  jmp _returnState
+
+
+_dialogue.state.suicide.berzerk_fausto:
+  AX16
+  ldx #obj.hud
+  SCRIPT_JSR core.object.disable
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.heartAttackJerk FALSE
+  jmp _returnState
+
+_dialogue.state.suicide.ghost:
+  AX16
+  ldx #obj.hud
+  SCRIPT_JSR core.object.disable
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.justiceServed FALSE
+
+_returnState:
+  WAIT_FOR obj.script.slave
+  ldx #obj.hud
+  SCRIPT_JSR core.object.enable
+
+_dialogue.state.suicide.none:
+  DIE

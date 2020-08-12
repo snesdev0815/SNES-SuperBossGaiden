@@ -1,0 +1,82 @@
+/**
+* A harmless enemy that walks towards player, then stops and bows down upon reaching player.
+* 
+*/
+.include "src/class/lifeform/lifeform.bower.h"
+.section "lifeform.bower"
+
+  METHOD init
+  lda.w #SPRITE.bower.dummy.PTR
+  ldx.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT)
+  jsl extern.lifeform.initialize
+
+  lda.w #300
+  sta lifeform.speed
+  rts
+
+
+  METHOD play
+  ;approach player, stop & bow if near
+  lda animation.timer
+  and.w #$7
+  bne +
+    lda lifeform.condition
+    and.w #$ff
+    cmp.w #LIFEFORM.CONDITION.GROUNDED
+    bne +
+      jsl extern.lifeform.turnToTarget
+      lda.w #OBJECT.PROPERTIES.isPlayer
+      jsl extern.lifeform.collisionDoubleDiameter
+      bcc +
+        stz lifeform.controller.current.actions
+
+
++
+  jsl extern.lifeform.evalOffscreen
+  rts
+
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +
+    jsl extern.lifeform.onAttack
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.GRAB
+  bne +
+    jsl extern.lifeform.onGrab
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.THROW
+  bne +
+    jsl extern.lifeform.onThrow
+    rts
+
++
+  cmp.w #LIFEFORM.COMMAND.KNOCK_OUT
+  bne +
+    jsl extern.lifeform.onKnockOut
+    rts
+
++
+  clc
+  rts
+
+  METHOD setPosition
+  jmp lifeform.library.setBasepointPosition
+
+  CLASS lifeform.bower oncommand
+
+.ends	
+	

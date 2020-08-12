@@ -1,0 +1,243 @@
+/**
+* PPU fixed color handler, can set or fade COLDATA register
+*
+*/
+
+.include "src/class/brightness/fixedColor.h"
+.section "fixedColor"
+
+  /**
+  *
+  */
+  METHOD init
+  sep #$20
+  lda.b #FIXED_COLOR.SPEED.DEFAULT
+  sta.b this.speed
+  rep #$31
+  lda.w FixedColourR
+  and.w #COLDATA_INTENSITY
+  pha
+  lda.w FixedColourG
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  ora 1,s
+  sta 1,s
+  lda.w FixedColourB
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  ora 1,s
+  sta 1,s
+  pla
+  sta.b this.current
+  sta.b this.target
+  rts
+
+
+  METHOD play
+  jsr _isDone
+  bcc +
+    rts
++
+    ;blend r
+    lda this.target
+    and.w #COLDATA_INTENSITY
+    tax
+    lda this.current
+    and.w #COLDATA_INTENSITY
+    jsr _blend
+    sep #$20
+    sta.w FixedColourR
+    rep #$31
+    pha
+    lda this.current
+    and.w #FIXED_COLOR.RED ~$ffff
+    ora 1,s
+    sta this.current
+    pla
+
+    ;blend g
+    lda this.target
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    and.w #COLDATA_INTENSITY
+    tax
+    lda this.current
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    and.w #COLDATA_INTENSITY
+    jsr _blend
+    sep #$20
+    sta.w FixedColourG
+    rep #$31
+    asl a
+    asl a
+    asl a
+    asl a
+    asl a
+    pha
+    lda this.current
+    and.w #FIXED_COLOR.GREEN ~$ffff
+    ora 1,s
+    sta this.current
+    pla
+
+    ;blend b
+    lda this.target
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    and.w #COLDATA_INTENSITY
+    tax
+    lda this.current
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    and.w #COLDATA_INTENSITY
+    jsr _blend
+    sep #$20
+    sta.w FixedColourB
+    rep #$31
+    asl a
+    asl a
+    asl a
+    asl a
+    asl a
+    asl a
+    asl a
+    asl a
+    asl a
+    asl a
+    pha
+    lda this.current
+    and.w #FIXED_COLOR.BLUE ~$ffff
+    ora 1,s
+    sta this.current
+    pla
+    rts
+
+  
+
+_blend:
+  .accu 16
+  .index 16
+  phx
+  cmp 1,s
+  beq ++
+  bcc +
+    dec a
+    bra ++
++
+    inc a
+++
+  plx
+  rts
+
+  /**
+  * fade to target color
+  */
+  METHOD fadeTo
+  sta this.target
+  sec
+  rts
+
+
+  /**
+  * has target color been reached?
+  */
+  METHOD isDone
+  pha
+  lda this.current
+  cmp this.target
+  bne +
+	pla
+	sec	
+	rts
+
++ 
+  pla
+  clc
+  rts
+
+  /**
+  * get current color target
+  */
+  METHOD get
+  lda this.target
+  rts
+
+  /**
+  * set current color target
+  */
+  METHOD set
+  sta this.target
+  sta this.current
+  lda this.current
+  and.w #COLDATA_INTENSITY
+  sep #$20
+  sta.w FixedColourR
+  rep #$31
+
+  lda this.current
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  and.w #COLDATA_INTENSITY
+  sep #$20
+  sta.w FixedColourG
+  rep #$31
+
+  lda this.current
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  and.w #COLDATA_INTENSITY
+  sep #$20
+  sta.w FixedColourB
+  rep #$31
+
+  rts
+
+  CLASS fixedColor get set fadeTo isDone
+
+.ends	
+	

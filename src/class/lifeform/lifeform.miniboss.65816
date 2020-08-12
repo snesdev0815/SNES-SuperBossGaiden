@@ -1,0 +1,577 @@
+/**
+* Miniboss keeping distance from player and attacking when player turns
+* Can throw stuff, too.
+* Usually uses animations of Philomena, Fausto or Orkan
+*
+*/
+
+.include "src/class/lifeform/lifeform.miniboss.h"
+.section "lifeform.miniboss"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.6,s
+  sta lifeform.animation.base
+  sta this.animationStuff
+  ldx.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT | LIFEFORM.ABILITIES.JUMP)
+  jsl extern.lifeform.initialize
+
+  lda OBJECT.CALL.ARG.7,s
+  sta this.payload.class
+
+  lda OBJECT.CALL.ARG.8,s
+  bne +
+    lda.w #BALROG.ATTACK.COUNTER
++  
+  sta this.attack.wait
+
+  lda this.animationStuff
+  sec
+  sbc.w #SPRITE.orkan.dummy.PTR
+  clc
+  adc.w #TARGET.DISTANCE  
+  sta this.targetDistance
+
+  lda.w #$7
+  sta animation.speed
+
+  lda.w #$200
+  sta lifeform.speed
+
+  lda.w #LIFEFORM.BALROG.CYCLES
+  sta this.cycle
+  
+  lda #balrog.jumpturn.CLB
+  sta lifeform.callback.touch.wall
+
+  lda.w #LIFEFORM.HITPOINTS
+  sta lifeform.hitpoints
+
+  lda.w #VOID
+  sta this.payload.object
+  sta this.payload.object+2
+  sta this.mg_rex
+  sta this.mg_rex+2
+  rts
+
+
+  METHOD play
+  ;kill immediately
+  lda lifeform.hitpoints
+  bne +
+    jsl extern.movement.bigExplosion
+    jmp _kill
+
++
+  lda this.mode
+  asl a
+  tax
+  jsr (_mode.lut,x)
+  jsl extern.lifeform.animate
+  rts
+
+_mode.lut:
+  .dw _mode.mount
+  .dw _mode.riding
+  .dw _mode.attack
+  .dw _mode.dizzy
+  .dw _mode.wait
+
+
+_mode.wait:
+  AX16
+  rts
+
+
+_mode.mount:
+  AX16
+  lda this.animationStuff
+  sta lifeform.animation.base 
+
+  lda lifeform.state
+  and.w #$ff
+  cmp.w #LIFEFORM.STATE.WALKING
+  bne +++
+
+  ;wait until on ground
+  lda dimension.speed.y
+  bne +++
+
+  ldx.w #this.mg_rex
+  jsr core.object.exists
+  bcs +
+    jsr iterator.library.reset
+    lda.w #lifeform.mg_rex.CLS.PTR
+    jsr iterator.library.each.byId
+    bcs ++
+      ;rex not present? goto attack
+      lda.w #BALROG.MODE.ATTACK
+      sta this.mode
+      rts
+
+++
+    lda iterator.target
+    sta this.mg_rex
+    lda iterator.target+2
+    sta this.mg_rex+2
+
++
+  ;got rex, approach and trigger mount
+  CALL lifeform.library.getPosition.MTD this.mg_rex
+  stx this.target.pos.x
+  sty this.target.pos.y
+  sta this.target.direction  
+
+  ldx.w #LIFEFORM.ABILITIES.MOVE.RIGHT
+  lda this.target.pos.x
+  sec
+  sbc dimension.position.x+1
+  php
+  jsr core.math.abs
+  lsr a
+  lsr a
+  bne ++
+    plp
+    ;trigger grab here
+    pei (iterator.self+2)
+    pei (iterator.self)
+    CALL lifeform.library.oncommand.MTD this.mg_rex LIFEFORM.COMMAND.GRAB_ME
+    pla
+    pla
+    ldx.w #0
+    bra +
+
+++
+  plp
+  bcs +
+      ldx.w #LIFEFORM.ABILITIES.MOVE.LEFT
+
++
+  phx
+  lda lifeform.controller.current.actions
+  and.w #(LIFEFORM.ABILITIES.MOVE.LEFT | LIFEFORM.ABILITIES.MOVE.RIGHT) ~$ffff
+  ora 1,s
+  sta lifeform.controller.current.actions
+  pla
+
++++
+  lda lifeform.controller.current.actions
+  jsl extern.lifeform.movement.evaluate
+  lda.w #OBJECT.PROPERTIES.hurts
+  trb iterator.properties
+  rts
+
+
+_mode.riding:
+  AX16
+  stz lifeform.controller.current.actions
+  lda lifeform.controller.current.actions
+  jsl extern.lifeform.movement.evaluate  
+  rts
+
+
+_mode.attack:
+  AX16
+  lda this.animationStuff
+  sta lifeform.animation.base 
+
+  lda lifeform.target.properties
+  jsl extern.lifeform.seekTarget
+  bcc +
+    CALL lifeform.library.getPosition.MTD lifeform.target.object
+    stx this.target.pos.x
+    sty this.target.pos.y
+    sta this.target.direction
+
++
+  lda lifeform.state
+  and.w #$ff
+  cmp.w #LIFEFORM.STATE.FALLING
+  beq ++  
+  cmp.w #LIFEFORM.STATE.JUMPING
+  bne +
+++  
+    lda.w #LIFEFORM.ABILITIES.JUMP
+    tsb lifeform.controller.current.actions
+    ;dont keep distance when jumping
+    bra +++
++
+
+
+  ldx.w #LIFEFORM.ABILITIES.MOVE.RIGHT
+
+  lda this.target.pos.x
+  sec
+  sbc dimension.position.x+1
+  php
+  jsr core.math.abs
+  plp
+  bne +
+    ldx.w #0
+    bra ++
+
++  
+  bcc +
+    ;player is right
+    ;clc
+    ;adc.b this.animationStuff
+    cmp this.targetDistance
+    bcs ++
+      ldx.w #LIFEFORM.ABILITIES.MOVE.LEFT
+      bra ++
+
++
+    ;player is left
+    ;clc
+    ;adc.b this.animationStuff
+    cmp this.targetDistance
+    bcc ++
+      ldx.w #LIFEFORM.ABILITIES.MOVE.LEFT
+
+++
+  phx
+  lda lifeform.controller.current.actions
+  and.w #(LIFEFORM.ABILITIES.MOVE.LEFT | LIFEFORM.ABILITIES.MOVE.RIGHT) ~$ffff
+  ora 1,s
+  sta lifeform.controller.current.actions
+  pla
+
+  ;jump return
++++    
+  lda lifeform.controller.current.actions
+  jsl extern.lifeform.movement.evaluate
+
+  lda.w #ANIMATION.FLAGS.X_MIRROR
+  trb animation.flags.static
+  lda this.target.pos.x
+  cmp dimension.position.x+1
+  bcs +
+    lda.w #ANIMATION.FLAGS.X_MIRROR
+    tsb animation.flags.static
+
++
+  lda iterator.properties
+  bit.w #OBJECT.PROPERTIES.isEnemy
+  beq +
+
+  lda this.target.pos.x
+  cmp dimension.position.x+1
+  bcs ++
+    ;player is to our left
+    lda this.target.direction
+    cmp.w #SPRITE.DIRECTION.RIGHT
+    beq +
+      lda this.attack.counter
+      bne +++
+
+      ;do special if boss facing other direction
+      sep #$20
+      lda.b #SPRITE.DIRECTION.LEFT
+      sta dimension.direction 
+      rep #$31
+      jsl extern.movement.doKnockOut
+      bra +
+
+++
+      ;player is right
+      lda this.target.direction
+      cmp.w #SPRITE.DIRECTION.LEFT
+      beq +
+        lda this.attack.counter
+        bne +++
+
+        ;do special if boss facing other direction
+        sep #$20
+        lda.b #SPRITE.DIRECTION.RIGHT
+        sta dimension.direction         
+        rep #$31
+        jsl extern.movement.doKnockOut
+
++
+  ;boss is facing us, reset counter
+  lda this.attack.wait
+  sta this.attack.counter
+  rts
+
++++
+  dec this.attack.counter
+  rts
+
+_mode.dizzy:
+  AX16
+  ;dont look dizzy while being grabbed
+  lda lifeform.state
+  and.w #$ff
+  cmp.w #LIFEFORM.STATE.GRABBED
+  beq ++
+    lda this.animationStuff
+    clc
+    adc.w #LIFEFORM.SPRITE_ANIMATION.LENGTH
+    sta lifeform.animation.base 
+
+++        
+  lda.w #0
+  jsl extern.lifeform.movement.evaluate
+  lda.w #OBJECT.PROPERTIES.hurts
+  trb iterator.properties
+  rts
+
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +
+    lda this.mode
+    cmp.w #BALROG.MODE.ATTACK
+    beq ++
+      clc
+      rts
+
+++
+    lda OBJECT.CALL.ARG.6,s
+    cmp #LIFEFORM.ATTACK.SLIDE
+    bne ++
+      ;if slide attack, do evasive jump
+      ldx.w #balrog.jumpturn.CLB
+      jsl extern.callback.execute
+      clc
+      rts      
+
+++
+    ;attacks only count once
+    lda.w #1
+    sta OBJECT.CALL.ARG.4,s
+    lda lifeform.hitpoints
+    cmp.w #2
+    bcs ++
+      ;only allow kill if a couple of cycles passed
+      lda this.cycle
+      beq ++
+
+      dec this.cycle
+
+      lda.w #LIFEFORM.HITPOINTS
+      sta lifeform.hitpoints
+      lda.w #BALROG.MODE.DIZZY
+      sta this.mode
+      ;lda.w #TRUE
+      ;sta this.isDizzy
+      jsl extern.movement.explodeBigFast
+      clc
+      rts
+
+++    
+    jsl extern.lifeform.onAttack
+
+    php
+    lda lifeform.hitpoints
+    bne +++
+      ;seek partner, try to replenish health
+      jsr iterator.library.reset
+-
+        lda.w #lifeform.miniboss.CLS.PTR
+        jsr iterator.library.each.byId
+        bcc +++
+          lda.b iterator.target
+          cmp.b iterator.self
+          beq -
+            CALL lifeform.library.oncommand.MTD iterator.target LIFEFORM.COMMAND.RESTORE_HEALTH
+
++++    
+    plp
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.GRAB
+  bne +
+    lda this.mode
+    cmp.w #BALROG.MODE.DIZZY
+    bne +++
+      jsl extern.lifeform.onGrab
+      rts
+
++++
+    cmp.w #BALROG.MODE.MOUNT
+    bne ++
+      ;only rex can grab us
+      lda OBJECT.CALL.ARG.3,s
+      and.w #$ff
+      cmp.w #lifeform.mg_rex.CLS.PTR
+      bne ++
+        lda.w #BALROG.MODE.RIDING
+        sta this.mode      
+        jsl extern.lifeform.onGrab
+        rts
+
+++   
+    clc
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.THROW
+  bne +
+    lda this.mode
+    cmp.w #BALROG.MODE.DIZZY
+    bne ++
+      lda.w #BALROG.MODE.MOUNT
+      bra +++
+++    
+    cmp.w #BALROG.MODE.RIDING
+    bne ++
+      lda.w #BALROG.MODE.ATTACK
++++      
+      sta this.mode
+      sep #$20
+      lda.b #BALROG.INVINCIBLE.TIMER
+      sta lifeform.invincibility.timer
+      rep #$31      
+      jsl extern.lifeform.onThrow
+      rts
+
+++
+    clc
+    rts
+
++
+  cmp.w #LIFEFORM.COMMAND.KNOCK_OUT
+  bne +
+    jsl extern.lifeform.onKnockOut
+    rts
+
++
+/*
+  cmp #LIFEFORM.COMMAND.CUTSCENE.MAKE_DIZZY
+  bne +
+    lda.w #LIFEFORM.HITPOINTS
+    sta lifeform.hitpoints
+    lda.w #TRUE
+    sta this.isDizzy
+    sec
+    rts
+
++
+*/
+  cmp.w #LIFEFORM.COMMAND.RESET
+  bne +
+    lda.w #LIFEFORM.HITPOINTS
+    sta lifeform.hitpoints
+
+    lda.w #BALROG.MODE.MOUNT
+    sta this.mode
+    lda.w #LIFEFORM.BALROG.CYCLES
+    sta this.cycle
+    sec
+    rts
+    
++
+  cmp.w #LIFEFORM.COMMAND.RESTORE_HEALTH
+  bne +
+    lda.w #LIFEFORM.BALROG.CYCLES
+    sta this.cycle
+    
+    lda.w #LIFEFORM.HITPOINTS
+    sta lifeform.hitpoints
+    sec
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.CUTSCENE.START
+  bne +
+    lda #LIFEFORM.SPRITE_ANIMATION.IDLE.RIGHT
+    jsl extern.movement.startAnimation
+    lda.w #BALROG.MODE.WAIT
+    sta this.mode
+    sec
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.CUTSCENE.END
+  bne +
+    lda.w #OBJECT.PROPERTIES.isEnemy
+    tsb iterator.properties
+/*
+    sep #$20
+    lda dimension.direction         
+    eor.b #(SPRITE.DIRECTION.RIGHT | SPRITE.DIRECTION.LEFT)
+    sta dimension.direction         
+    rep #$31
+*/    
+    ;jsl extern.movement.doKnockOut
+
+    lda.w #BALROG.MODE.MOUNT
+    sta this.mode
+    sec
+    rts
+
++
+  clc
+  rts
+
+
+  CALLBACK balrog.jumpturn
+    lda lifeform.controller.current.actions
+    eor.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT)
+    sta lifeform.controller.current.actions
+    jsl extern.movement.doJump
+
+    lda #LIFEFORM.JUMP.IMPULSE*1.5
+    sta dimension.speed.y
+
+    lda #LIFEFORM.JUMP.ACCEL*1.5
+    sta dimension.acceleration.y  
+
+    ;generate bullet or whatever when jumping
+    lda this.payload.class
+    beq +
+      ldx.w #this.payload.object
+      jsr core.object.exists
+      bcs +
+        pea 0
+        ldy this.payload.class
+        ldx #this.payload.object
+        pea 0
+        pea 0
+        pea 0
+        lda dimension.position.y+1
+        pha
+        lda dimension.position.x+1
+        clc
+        adc dimension.collision.basepoint.x
+        pha
+        /*lda dimension.position.x+1
+        clc
+        adc.w #16
+        pha   
+        lda this.target.pos.x
+        cmp dimension.position.x+1
+        bcs ++
+          lda 1,s
+          sec
+          sbc.w #32
+          sta 1,s
+++        
+*/
+        jsr core.object.create.try
+        pla
+        pla
+        pla
+        pla
+        pla
+        pla
+
++    
+    rts
+
+  METHOD setPosition
+  jmp lifeform.library.setBasepointPosition
+
+  CLASS lifeform.miniboss oncommand
+.ends	
+	

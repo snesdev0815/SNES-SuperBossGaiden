@@ -1,0 +1,162 @@
+/**
+* Lifeform controller for player, interface: joypad
+* 
+*/
+.include "src/class/lifeform/lifeform.controller.joypad.main.h"
+.section "lifeform.controller.joypad.main"
+
+
+lifeform.controller.joypad.main.init:
+  AX16
+  jmp lifeform.controller.joypad.main.focusOnSelf
+
+
+lifeform.controller.joypad.main.focusOnSelf:
+  AX16
+  ;focus on self
+  pei (iterator.self)
+  pei (iterator.self + 2)
+  jsr core.screen.focus.immediate
+  pla
+  pla
+  rts
+
+lifeform.controller.player.eval:
+AX16
+  ;normal 8-way directional movement
+  ldx lifeform.controller.id
+  jsr core.input.get.pressTrigger
+  ;x: trigger, y: press
+  tax
+  tya
+  and.w #(JOY_DIR_RIGHT | JOY_DIR_LEFT | JOY_DIR_UP | JOY_DIR_DOWN)
+  xba
+  ora lifeform.controller.current.actions
+  sta lifeform.controller.current.actions
+
+  tya
+  and.w #JOY_BUTTON_B
+  beq +
+    lda.w #LIFEFORM.ABILITIES.JUMP
+    tsb lifeform.controller.current.actions
+
++
+  txa
+  bit.w #JOY_BUTTON_A
+  beq +
+    lda.w #LIFEFORM.ABILITIES.ATTACK
+    tsb lifeform.controller.current.actions
+    jmp ++
+
++
+  bit.w #JOY_BUTTON_Y
+  beq +
+    lda.w #LIFEFORM.ABILITIES.GRABTHROW
+    tsb lifeform.controller.current.actions
+    jmp ++
+
++
+  phx
+  phy
+  bit.w #JOY_DIR_UP
+  beq +
+    ;only boss may enter doors
+    lda iterator.self
+    and.w #$ff
+    cmp.w #lifeform.player.CLS.PTR
+    bne +
+      ;only allow door enter if standing
+      lda lifeform.state
+      and.w #$ff
+      cmp.w #LIFEFORM.STATE.WALKING
+      bne +
+        lda #level.exit.CLS.PTR
+        jsr collision.library.fromBox.toDiameter.byId
+        bcc +
+          CALL level.exit.tryExit.MTD iterator.target
+          bcc +
+            lda.w #AUDIO.EFFECT.TEXTBOX
+            jsr interface.dimension.playSoundEffect
+            ply
+            plx
+            jmp ++
+
++
+  ply
+  plx
+
+  ;dash (double-tap direction)
+  lda this.dash.direction
+  beq +
+    ;seek second press
+    dec this.dash.counter
+    beq +
+      txa
+      and.w #(JOY_DIR_RIGHT | JOY_DIR_LEFT)
+      beq ++
+        cmp this.dash.direction
+        bne +
+          ;double tap happened
+          lda.w #LIFEFORM.ABILITIES.DASH
+          tsb lifeform.controller.current.actions
+          bra ++
++
+    ;first press, initiate counter
+    stz this.dash.direction
+    txa
+    and.w #(JOY_DIR_RIGHT | JOY_DIR_LEFT)
+    beq ++
+      sta this.dash.direction
+      lda #LIFEFORM.DASH.VALID_COUNTER
+      sta this.dash.counter
+
+++
+  rts
+
+lifeform.controller.joypad.main.evaluate:
+  AX16
+  jsr lifeform.controller.player.eval
+
+  txa
+  bit.w #JOY_BUTTON_START
+  beq +
+    NEW Script.CLS.PTR VOID pause
+    stz lifeform.controller.current.actions
+
++    
+  jmp lifeform.library.focusOnSelf
+
+lifeform.controller.joypad.sidekick.init:
+  AX16
+  rts
+
+lifeform.controller.joypad.sidekick.evaluate:
+  AX16
+  jsr lifeform.controller.player.eval
+
+  lda lifeform.state
+  and.w #$ff
+  cmp.w #LIFEFORM.STATE.GRABBED
+  beq ++
+    txa
+    bit.w #JOY_BUTTON_X
+    beq +
+      jsl extern.lifeform.warpToPlayer
+      rts
+
++
+    bit.w #JOY_BUTTON_START
+    beq +
+      ;kill self, jump up for more a dramatic exit
+      lda lifeform.berzerk.counter
+      beq +
+        ;dont trigger twice
+        stz lifeform.berzerk.counter
+        stz lifeform.controller.current.actions
+        jsl extern.movement.doJump
+
++
+++
+  rts
+
+.ends	

@@ -1,0 +1,203 @@
+/**
+* (sprite) color palette pool manager
+*
+* Because CGRAM for sprites are allocated dynamically, we often end up wasting multiple palettes for identical colors if the same sprites (or sprites sharing palettes) are instanciated more than once.
+* Therefore, each palette being allocated is hashed and that hash stored alongside allocation id and count of dependant objects.
+* That way, we only have to allocate it once and can give out the same allocated cgram space to multiple sprites, then deallocate it once it's not in use anymore
+*/
+
+
+.include "src/core/cgram.pool.h"
+.section "cgram.pool"
+
+core.cgram.pool.init:
+  AX16
+  lda.w #0
+  ldy.w #CGRAM.POOL.GLOBAL.END - CGRAM.POOL.GLOBAL.START
+  ldx.w #CGRAM.POOL.GLOBAL.START
+  jmp ClearWRAM
+
+/**
+* compute hash, check against already allocated palettes, return allocated entry
+*
+* if not in buffer, allocate cgram as required, write hash & allocation details into buffer
+*   -if buffer full, return false
+* if in buffer, update
+* return allocated palette id & start, return true if allocation succeeded
+*
+* @param a<int,16bit>   hash
+;* @param a<int,8bit>   data bank 
+* @param x<int,16bit>   initial start adress
+* @param y<int,16bit>   data length
+*
+* @return a <int,8bit>	allocation block id
+* @return y <int,16bit>  hash
+* @return x <int,16bit>	cgram start adress
+* @return c <bool>	true if allocation succeeded
+*/
+core.cgram.pool.allocate:
+  AX16
+  phx
+  phy
+  sta.w GLOBAL.cgram.pool.hash.current
+  
+  jsr _isHashInPool
+  bcs +
+
+    ;hash not in pool, allocate cgram
+    lda 3,s
+    tay
+    lda.b 1,s
+    tax
+    lda.w #PALETTE.GRANULARITY.4BPP
+
+    jsr core.cgram.allocate
+    ;* @return a <int,8bit>  allocation block id
+    ;* @return x <int,16bit> cgram start adress
+
+    bcs ++
+      ply
+      plx
+      clc
+      rts
+
+++
+    ;after allocation, seek free slot in palette pool
+    pha
+    phx
+    jsr _getFreePoolSlot
+    bcs ++
+      TRIGGER_ERROR E_CgramPoolFull
+
+++
+    ;store allocation information in found pool slot
+    ply
+    pla
+    sep #$20
+    sta.w GLOBAL.cgram.pool.1.allocation.id,x
+    rep #$31
+    tya
+    sta.w GLOBAL.cgram.pool.1.allocation.start,x
+    lda.w GLOBAL.cgram.pool.hash.current
+    sta.w GLOBAL.cgram.pool.1.hash,x
+      
++
+  ;got slot for requested hash (either by finding existing or creating new entry), return allocation info
+  ply
+  pla
+  inc.w GLOBAL.cgram.pool.1.subscribers,x
+  lda.w GLOBAL.cgram.pool.1.allocation.start,x
+  pha
+  lda.w GLOBAL.cgram.pool.1.hash,x
+  tay
+  sep #$20
+  lda.w GLOBAL.cgram.pool.1.subscribers,x
+  xba
+  lda.w GLOBAL.cgram.pool.1.allocation.id,x
+  rep #$31
+
+  plx
+
+  sec
+  rts
+
+/**
+*
+* @param a<int,16bit>   hash 
+*
+* @return c <bool>	true if found
+* @return x <int,16bit>	pointer to hash in pool if hash found
+*/
+_isHashInPool:
+  AX16
+  pha
+  ldx #0
+-   lda 1,s
+    cmp.w GLOBAL.cgram.pool.1.hash,x
+    bne ++
+      lda.w GLOBAL.cgram.pool.1.subscribers,x
+      and.w #$ff
+      bne +
+++    
+    txa
+    clc
+    adc.w #_sizeof_poolEntry
+    cmp #_sizeof_poolEntry * GLOBAL.CGRAM.POOL.ENTRIES    
+    tax
+    
+    bcc -
+
+  pla
+  clc
+  rts
+  
++
+  pla
+  sec
+  rts
+
+
+/**
+*
+* @param a<int,16bit>   hash 
+*
+* @return c <bool>	true if found
+* @return x <int,16bit>	pointer to free slot
+*/
+_getFreePoolSlot:
+  AX16
+  ldx #0
+-   lda.w GLOBAL.cgram.pool.1.subscribers,x
+    and.w #$ff
+    beq +
+    
+    txa
+    clc
+    adc.w #_sizeof_poolEntry
+    cmp #_sizeof_poolEntry * GLOBAL.CGRAM.POOL.ENTRIES    
+    tax
+    
+    bcc -
+
+  clc
+  rts
+  
++ 
+  sec
+  rts
+
+
+/**
+* signal from object that it doesn't need allocated palette anymore
+*
+* if not in buffer, trigger error 
+
+* if in buffer, decrease member count of that hash
+*   -if member count 0, deallocate palette & remove entry from buffer
+*
+* @param a <int,16bit>  hash
+*/
+core.cgram.pool.deallocate:
+  AX16
+  jsr _isHashInPool
+  bcs +
+    TRIGGER_ERROR E_CgramPoolBadDeallocation
+
++
+  sep #$20
+  dec.w GLOBAL.cgram.pool.1.subscribers,x
+
+  bpl +
+    ;if hash was deallocated more often than allocated, something went horribly wrong...
+    TRIGGER_ERROR E_CgramPoolEmptyDeallocation
++
+  bne +
+    ;if no subscribers left, palette is free to be deallocated
+    lda.w GLOBAL.cgram.pool.1.allocation.id,x
+    jsr core.cgram.deallocate
+
++
+  rep #$31
+  rts
+
+.ends

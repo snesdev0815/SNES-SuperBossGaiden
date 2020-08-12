@@ -1,0 +1,90 @@
+/**
+* A flying enemy that floats up and down in a sine wave pattern.
+* Represented by satellview mascot "Satebo".
+* 
+*/
+.include "src/class/lifeform/lifeform.floater.h"
+.section "lifeform.floater"
+
+  METHOD init
+  lda.w #SPRITE.satebo.idle.PTR
+  ldx.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT)
+  jsl extern.lifeform.initialize
+
+  lda.b dimension.position.y + 1
+  sta this.position.original.y
+
+  lda.w #260
+  sta lifeform.speed
+
+  sep #$20
+  lda #LIFEFORM.STATE.FLYING
+  sta lifeform.state
+  rep #$31
+
+  lda.w #$7
+  sta.b animation.speed    
+  rts
+
+
+  METHOD play
+  lda lifeform.state
+  and.w #$ff
+  cmp.w #LIFEFORM.STATE.FLYING
+  bne +
+    lda dimension.position.x + 1
+    asl a
+    and.w #$ff
+    jsr core.math.sin
+    cmp.w #$8000
+    ror a
+    cmp.w #$8000
+    ror a    
+    clc
+    adc this.position.original.y
+    sta dimension.position.y + 1
+
++
+  jsl extern.lifeform.evalOffscreen
+  rts
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +
+    jsr lifeform.fruit.reportAttack
+    jsl extern.lifeform.onAttack
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.GRAB
+  bne +
+    jsl extern.lifeform.onGrab
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.THROW
+  bne +
+    jsr lifeform.fruit.reportAttack
+    jsl extern.lifeform.onThrow
+    rts
+
++
+  clc
+  rts
+
+  METHOD setPosition
+  jmp lifeform.library.setBasepointPosition
+
+
+  CLASS lifeform.floater oncommand
+
+.ends	

@@ -1,0 +1,173 @@
+/**
+* Enemy that jumps around, needs to be attacked first (then becomes angry and can be killed/grab/thrown)
+* Uses Parappa the Rapper animations
+* 
+*/
+
+.include "src/class/lifeform/lifeform.parappa.h"
+.section "lifeform.parappa"
+
+  METHOD init
+  lda.w #SPRITE.parappa.dummy.PTR
+  ldx.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT | LIFEFORM.ABILITIES.JUMP)
+  jsl extern.lifeform.initialize
+
+  lda.w #100
+  sta lifeform.speed
+
+  lda.w #10
+  sta lifeform.hitpoints
+
+  lda #lifeform.turn.CLB
+  sta lifeform.callback.touch.wall
+  lda #umbrella.jump.CLB
+  sta lifeform.callback.touch.floor
+  rts
+
+  CALLBACK umbrella.jump
+  sep #$20
+  lda #LIFEFORM.STATE.JUMPING
+  sta lifeform.state
+
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+
+  lda #LIFEFORM.JUMP.AGE
+  sta lifeform.action.age
+  rep #$31
+
+  lda.w #AUDIO.EFFECT.DASH
+  jsr interface.dimension.playSoundEffect
+
+  ldx #UMBRELLA.JUMP.IMPULSE
+  lda this.mode
+  beq +
+    ldx #UMBRELLA.JUMP.IMPULSE/2
+
++
+  txa
+  sta dimension.speed.y
+
+  ldx #UMBRELLA.JUMP.ACCEL
+  lda this.mode
+  beq +
+    ldx #UMBRELLA.JUMP.ACCEL/2
+
++
+  txa  
+  sta dimension.acceleration.y
+
+  ;overcome ground traction
+  dec dimension.position.y+1
+
+  lda.w #SPRITE.dust.PTR
+  ldx.w #0
+  ldy.w #10
+  jsl extern.lifeform.sprite
+  lda this.mode
+  beq +
+    lda this.wait
+    beq ++
+      stz lifeform.controller.current.actions
+      dec this.wait
+      rts
+
+++    
+    ;follow player if angry
+    jsl extern.lifeform.turnToTarget
+    rts
+
++
+  rts
+
+  METHOD play
+  jsl extern.lifeform.evalOffscreen
+  lda this.wait
+  beq +
+    lda.w #OBJECT.PROPERTIES.hurts
+    trb iterator.properties
+
++  
+  rts
+
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +
+    lda this.mode
+    beq ++
+      lda this.wait
+      bne +++
+
+      ;angry mode
+      jsl extern.lifeform.onAttack
+      rts
+
+
+++
+        inc this.mode
+        lda.w #SPRITE.parappa_mad.dummy.PTR
+        sta lifeform.animation.base
+        lda.w #400
+        sta lifeform.speed
+        sep #$20
+        lda.b #LIFEFORM.THROW_INVINCIBLE.AGE
+        sta lifeform.invincibility.invisible.timer
+        rep #$31
+        lda #5
+        sta this.wait
+        jsl extern.lifeform.onAttack
+        lda.w #OBJECT.PROPERTIES.hurts
+        trb iterator.properties
+        jsl extern.movement.explodeBigFast
+        sec
+        rts
+
++++
+++
+    ;block
+    lda.w #AUDIO.EFFECT.BLOCK
+    jsr interface.dimension.playSoundEffect
+
+    clc
+    rts
+
++
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.GRAB
+  bne +
+    lda this.mode
+    beq +
+      jsl extern.lifeform.onGrab
+      rts
+
++
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.THROW
+  bne +
+    lda this.mode
+    beq +
+      jsl extern.lifeform.onThrow
+      rts
+
++
+  clc
+  rts
+
+  METHOD setPosition
+  jmp lifeform.library.setBasepointPosition
+
+
+  CLASS lifeform.parappa oncommand
+
+.ends	
+	

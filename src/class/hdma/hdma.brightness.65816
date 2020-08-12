@@ -1,0 +1,145 @@
+/**
+* HDMA object that applies fadeout to bottom and top of screen via brightness register
+* 
+* Causes slight sprite glitches on some SNES models (which exactly?)
+*
+*/
+
+.include "src/class/hdma/hdma.brightness.h"
+.section "hdma.brightness"
+
+  METHOD init
+  lda #BRIGHTNESS.VALUE_TABLE.LENGTH_TOTAL
+  sta hdma.ramBuffer.length
+  jsr hdma.library.allocateBuffer
+
+  jsr _updateValueTable
+  jsr _initTable
+
+  lda.w #GLOBAL.wramBuffer.start
+  clc
+  adc hdma.ramBuffer.start
+  tax
+  sep #$20
+  lda #RAM
+  jsr hdma.library.setTableAdress
+
+  lda.b #INIDSP & $ff
+  sta hdma.target
+
+  lda hdma.flags
+  ora #(DMAP_1_REG_WRITE_ONCE | DMAP_HDMA_INDIRECT_MODE)
+  sta hdma.flags
+
+  lda.b #RAM
+  sta hdma.indirect.bank
+
+  jsr hdma.library.start
+  rep #$31
+  rts
+
+
+  METHOD play
+  sep #$20
+  lda.w ScreenBrightness
+  cmp this.brightness
+  beq +
+    sta this.brightness
+    bit.b #INIDSP_FORCE_BLANK
+    beq ++
+      stz hdma.isActive
+      rep #$31
+      jmp hdma.library.makePhysical
+
+++    
+    lda.b #TRUE
+    sta hdma.isActive
+    rep #$31
+    jsr _updateValueTable
+    jmp hdma.library.makePhysical
+
++
+  rep #$31
+  rts
+
+_updateValueTable:
+  AX16
+  php
+  lda hdma.ramBuffer.start
+  clc
+  adc.w #BRIGHTNESS.VALUE_TABLE
+  tax
+  sep #$20
+  ldy.w #BRIGHTNESS.VALUE_TABLE.LENGTH
+  lda this.brightness
+-  
+    sta.w GLOBAL.wramBuffer.start,x
+    inx
+    sta.w GLOBAL.wramBuffer.start,x
+    dec a
+    bpl +
+      lda.b #0
+
++
+    inx
+    dey
+    dey
+    bne -
+
+  plp
+  rts
+
+
+
+  METHOD kill
+  jsr hdma.library.stop
+  jsr hdma.library.deallocateBuffer
+  jmp object.library.kill
+
+
+_initTable:
+  AX16
+  lda hdma.ramBuffer.start
+  tax
+  clc
+  adc.w #(GLOBAL.wramBuffer.start&$ffff) + BRIGHTNESS.VALUE_TABLE
+  pha
+
+  lda.w #$7f
+  sta.w GLOBAL.wramBuffer.start,x
+  inx
+  lda 1,s
+  sta.w GLOBAL.wramBuffer.start,x
+  inx
+  inx
+  lda.w #$4f
+  sta.w GLOBAL.wramBuffer.start,x
+  inx
+  lda 1,s
+  sta.w GLOBAL.wramBuffer.start,x
+  inx
+  inx
+
+  ldy.w #BRIGHTNESS.VALUE_TABLE.LENGTH
+  lda.w #(BRIGHTNESS.VALUE_TABLE.LENGTH | HDMACNT_REPEAT)
+  sta.w GLOBAL.wramBuffer.start,x
+  inx
+
+  lda 1,s
+  sta.w GLOBAL.wramBuffer.start,x
+  inx
+  inx
+
+  stz.w GLOBAL.wramBuffer.start,x
+  pla
+  rts
+
+  METHOD disable
+  jmp hdma.library.disable
+
+  METHOD enable
+  jmp hdma.library.enable
+
+  CLASS hdma.brightness
+.ends	
+	

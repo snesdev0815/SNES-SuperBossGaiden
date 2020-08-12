@@ -1,0 +1,1596 @@
+/**
+* Object handler
+*
+* Instanciates objects from classes runs update/play routines, does garbage collection after object termination
+*
+*/
+
+.include "src/core/oop.h"
+.section "oophandler"
+
+;clear oop stack
+core.object.init:
+	AX16
+	phd
+	lda #ZP
+	tcd
+	lda #0
+	ldy #OopStackEnd-OopStack
+	ldx #OopStack
+	jsr ClearWRAM
+
+	lda #oopStackTst
+	sta.w STACK_strt
+	sta.w STACK_end
+	stz.w GLOBAL.OopObjSlotPtr
+	stz.w GLOBAL.OopObjRamPtr
+	lda #0
+	sta.l GLOBAL.garbagePresent
+
+	pld
+	rts
+
+.macro _PREAMBLE
+	php	;dummy push for jsl compatibility
+	php
+	phd
+	pea ZP
+	pld
+	pha
+	cpx.w #$ff
+	bcs _PREAMBLE_OK\@
+		txa
+		clc
+		adc 3,s
+		tax
+
+_PREAMBLE_OK\@:
+	phx
+	phy	
+
+.endm
+
+.macro _EPILOGUE
+	ply
+	plx
+	pla
+	pld
+	plp
+	plp
+.endm
+
+/**
+*
+* @expect x: pointer to selected class in ROM bank 0
+*/
+_instanciateClass:
+	AX16
+	txy
+	lda.w GLOBAL.OopObjStackPtr
+	pha
+	jsl extend.oop.seekFreeSlot	;a: relative pointer to slot
+    bcs +
+    	pla
+    	sta.w GLOBAL.OopObjStackPtr
+		lda.w #E_ObjLstFull
+		clc
+		rts      
+
++
+	txa
+	sta.w GLOBAL.OopObjStackPtr
+	tyx
+	tay
+
+	;x: current stack pointer
+	;y: rom class pointer
+	lda.l :OopClassWordLut<<16+OOPR.flags,x
+	sta.w OopStack.flags,y
+
+	;store default properties
+	lda.l :OopClassWordLut<<16+OOPR.properties,x
+	sta.w OopStack.properties,y
+
+	lda.w OopObjCount
+	sta.w OopStack.num,y
+	inc.w OopObjCount
+
+	;copy routine pointers
+	lda.l :OopClassWordLut<<16+OOPR.rInit,x
+	sta.w OopStack.init,y
+
+
+	lda.l :OopClassWordLut<<16+OOPR.rPlay,x
+	sta.w OopStack.play,y
+	sta.w OopStack.current,y
+
+	lda.l :OopClassWordLut<<16+OOPR.rPause,x
+	sta.w OopStack.pause,y
+
+	lda.l :OopClassWordLut<<16+OOPR.zpLen,x
+	and #$ff
+	pha
+	clc
+	adc.w GLOBAL.OopObjRamPtr
+	cmp #OopObjRamEnd-OopObjRam
+	bcc +
+		pla
+		;no memory left for malloc, throw error
+		pla
+    	sta.w GLOBAL.OopObjStackPtr
+
+		;must clear set variables, else this will be mistaken for initialized object!!
+		lda.w #0
+		sta.w OopStack.flags,y
+		sta.w OopStack.properties,y
+		dec.w OopObjCount
+
+		lda.w #E_ObjRamFull
+		clc
+		rts
+
++
+	;clear memory for this obj
+	lda #OopObjRam
+	clc
+	adc.w GLOBAL.OopObjRamPtr
+	sta.w OopStack.dp,y	;store ram base for this obj
+	tax				;clear offset
+
+	pla			;update objram-ptr
+	tay
+	clc
+	adc.w GLOBAL.OopObjRamPtr
+	sta.w GLOBAL.OopObjRamPtr
+
+	jsr OopHandlerCopyDefaults
+	ldx.w GLOBAL.OopObjStackPtr
+
+	txa
+	clc
+	adc #_sizeof_oopStackObj
+	cmp.w GLOBAL.OopObjSlotPtr
+	bcc +
+		sta.w GLOBAL.OopObjSlotPtr				;try to keep track of highest obj stack pointer to speed up obj loops
+	
++	
+	pla
+	lda.w OopStack.flags,x
+	ora.w #OBJECT.FLAGS.InitOk
+	sta.w OopStack.flags,x
+	sec
+	rts
+
+
+
+
+/**
+* instanciate object of class. same as above, but fail gracefully if object couldn't be created
+*
+* @param a <int,16bit>  parameter passed through to class constructor method
+* @param x <int,16bit>  return parameter, contains object hash (pointer) upon successful instanciation
+* @param y <int,16bit>  class id that is to be instanciated
+*/
+core.object.create.try:
+	AX16
+	phb
+	phd
+	pha	;param A
+	cpx.w #$ff
+	bcs +
+		txa
+		clc
+		adc 3,s
+		tax
+
++	
+	phx	;object hash
+
+	;check singleton
+	tya
+	asl a
+	tax
+	lda.l OopClassWordLut,x
+	tax
+	lda.l :OopClassWordLut<<16+OOPR.flags,x
+	lsr a
+	bcc +
+		;is singleton
+		tya
+		jsl extend.oop.seekObjectId
+		bcc +
+			;get hash pointer
+			lda 1,s
+			cmp #VOID
+			beq ++
+				;save back if not void
+				tay
+				lda.w OopStack.id,x
+				sta.w Hash.id,y
+				lda.w OopStack.num,x
+				sta.w Hash.count,y
+				txa
+				HASH_POINTER_TO_INDEX
+				sep #$20
+				sta.w Hash.pntr,y
+				rep #$31
+
+++
+			plx
+			pla
+			pld
+			plb
+			sec
+			rts
+
++	
+	jsr _instanciateClass
+	bcs +
+		plx
+		pla
+		pld
+		plb
+		clc
+		rts
++	
+	;x contains stack pointer
+	;get hash pointer
+	lda 1,s
+	cmp #VOID
+	beq +
+		;save back if not void
+		tay
+		lda.w OopStack.id,x
+		sta.w Hash.id,y
+		lda.w OopStack.num,x
+		sta.w Hash.count,y
+		txa
+		HASH_POINTER_TO_INDEX
+		sep #$20
+		sta.w Hash.pntr,y
+		rep #$31
+
++
+	;put stack pointer on stack instead of hash pointer
+	txa
+	sta 1,s
+
+	pea OBJR_noErr	;set return error code
+	pea _core.object.create.try.return-1	;push return adress
+
+    lda.w OopStack.init,x ;push target subroutine adress
+    dec a
+    pha
+
+	lda.l OopStack.dp,x	;set direct page
+	tcd
+
+	lda 9,s	;get input param A
+	rts
+
+_core.object.create.try.return:
+	AX16
+	sec ;override obj carry return
+	sta 5,s	;store return value A
+	pla 	;get return code
+	beq +
+		jsr _setDead
+		clc
+
++
+	plx
+	pla
+	pld
+	plb
+	rts
+
+extend.object.create.try:
+	AX16
+	phd
+	pha	;param A
+	cpx.w #$ff
+	bcs +
+		txa
+		clc
+		adc 3,s
+		tax
+
++	
+	phx	;object hash
+
+	;check singleton
+	tya
+	asl a
+	tax
+	lda.l OopClassWordLut,x
+	tax
+	lda.l :OopClassWordLut<<16+OOPR.flags,x
+	lsr a
+	bcc +
+		;is singleton
+		tya
+		jsl extend.oop.seekObjectId
+		bcc +
+			;get hash pointer
+			lda 1,s
+			cmp #VOID
+			beq ++
+				;save back if not void
+				tay
+				lda.w OopStack.id,x
+				sta.w Hash.id,y
+				lda.w OopStack.num,x
+				sta.w Hash.count,y
+				txa
+				HASH_POINTER_TO_INDEX
+				sep #$20
+				sta.w Hash.pntr,y
+				rep #$31
+
+++
+			plx
+			pla
+			pld
+			sec
+			rtl
+
++	
+	jsr _instanciateClass
+	bcs +
+		plx
+		pla
+		pld
+		clc
+		rtl
++	
+	;x contains stack pointer
+	;get hash pointer
+	lda 1,s
+	cmp #VOID
+	beq +
+		;save back if not void
+		tay
+		lda.w OopStack.id,x
+		sta.w Hash.id,y
+		lda.w OopStack.num,x
+		sta.w Hash.count,y
+		txa
+		HASH_POINTER_TO_INDEX
+		sep #$20
+		sta.w Hash.pntr,y
+		rep #$31
+
++
+	;put stack pointer on stack instead of hash pointer
+	txa
+	sta 1,s
+
+	pea OBJR_noErr	;set return error code
+	pea _extend.object.create.try.return-1	;push return adress
+
+    lda.w OopStack.init,x ;push target subroutine adress
+    dec a
+    pha
+
+	lda.l OopStack.dp,x	;set direct page
+	tcd
+
+	lda 9,s	;get input param A
+	rts
+
+_extend.object.create.try.return:
+	AX16
+	sec	;override obj carry return
+	sta 5,s	;store return value A
+	pla 	;get return code
+	beq +
+		jsr _setDead
+		clc
+
++
+	plx
+	pla
+	pld
+	rtl
+
+_setDead:
+	AX16
+	php	
+	cmp #OBJR_kill
+	beq ++
+		TRIGGER_ERROR E_ValueError
+
+++			
+	lda 2+2,s	;get object stack pointer
+	phx	;save x return value
+	tax
+	;don't delete immediately. flag as scheduled for deletion instead. will be collected by garbage collector soon
+	lda.w OopStack.flags,x	;delete obj
+	and #OBJECT.FLAGS.Present ~$ffff
+	ora #OBJECT.FLAGS.DeleteScheduled
+	sta.w OopStack.flags,x
+
+	;set flag to make sure garbage collector only runs when required
+	lda #TRUE
+	sta.w GLOBAL.garbagePresent
+	plx
+	plp	
+	rts
+
+
+/**
+*
+* @param a	: parameter
+* @param x	: pointer to hash
+* @param y	: method to call
+*/
+extend.object.call:
+	AX16
+	phd
+	pha	;input param A
+	pea 0	;space for stack pointer for return
+
+	pea OBJR_noErr	;set return error code
+	pea _extend.object.call.return-1	;push return adress
+	cpx.w #$ff
+	bcs +
+		txa
+		clc
+		adc 9,s
+		tax
+
++	
+
+	tya
+	asl a
+	clc
+	adc #OOPR.rInit
+	pha ;push target routine offset
+
+	txy	;pointer to obj hash now stays in y
+	lda.w Hash.id,x
+	and #$ff
+	asl a
+	tax
+	lda.l OopClassWordLut,x
+	clc
+	adc 1,s
+	tax
+	lda.l :OopClassWordLut<<16,x
+
+	dec a
+	sta 1,s
+
+	lda.w Hash.pntr,y
+	INDEX_TO_HASH_POINTER
+	sta 7,s	;save object stack pointer for later
+	tax	;oop stack pointer now stays in x
+
+	;check if loaded data is actually sane or if we need to seek obj and start over
+	lda.w OopStack.id,x
+	cmp.w Hash.id,y
+	bne ++
+		lda.w OopStack.num,x
+		cmp.w Hash.count,y
+		bne ++
+
+		;no information on stack has to be updated if object moves, just stack pointer in x
+		lda.w OopStack.flags,x
+		bit.w #OBJECT.FLAGS.Present
+		bne +
+++
+		;obj no present in requested slot, seek
+		lda.w Hash.count,y
+		tax	
+		lda.w Hash.id,y
+		jsl extend.oop.seekObjectByCountId
+		bcs ++
+	        TRIGGER_ERROR E_ObjNotFound
+				
+++
+		txa
+		HASH_POINTER_TO_INDEX
+		sep #$20
+		sta.w Hash.pntr,y	;update hash pointer with found matching obj-instance in obj stack 
+		rep #$31
+		;also update objstack pointer already on stack
+		lda.w Hash.pntr,y
+		INDEX_TO_HASH_POINTER
+		sta 7,s	;save object stack pointer for later
+
++
+	lda.l OopStack.dp,x	;set direct page
+	tcd
+
+	lda 9,s	;get input param A
+	rts
+
+_extend.object.call.return:
+	AX16
+	sta 5,s	;store return value A
+	pla 	;get return code
+	beq +
+		jsr _setDead
+
++
+	pla
+	pla
+	pld
+	rtl
+
+
+
+/**
+* instanciate object of class
+*
+* @param a <int,16bit>  parameter passed through to class constructor method
+* @param x <int,16bit>  return parameter, contains object hash (pointer) upon successful instanciation
+* @param y <int,16bit>  class id that is to be instanciated
+*/
+core.object.create:
+	AX16
+	phb
+	phd
+	pha	;param A
+	cpx.w #$ff
+	bcs +
+		txa
+		clc
+		adc 3,s
+		tax
+
++	
+	phx	;object hash
+
+	;check singleton
+	tya
+	asl a
+	tax
+	lda.l OopClassWordLut,x
+	tax
+	lda.l :OopClassWordLut<<16+OOPR.flags,x
+	lsr a
+	bcc +
+		;is singleton
+		tya
+		jsl extend.oop.seekObjectId
+		bcc +
+			;get hash pointer
+			lda 1,s
+			cmp #VOID
+			beq ++
+				;save back if not void
+				tay
+				lda.w OopStack.id,x
+				sta.w Hash.id,y
+				lda.w OopStack.num,x
+				sta.w Hash.count,y
+				txa
+				HASH_POINTER_TO_INDEX
+				sep #$20
+				sta.w Hash.pntr,y
+				rep #$31
+
+++
+			plx
+			pla
+			pld
+			plb
+			rts
+
++	
+	jsr _instanciateClass
+.if HANDLE_ERRORS == 1	
+	bcs +
+		pha
+		jsr core.error.trigger
++	
+.endif
+	;x contains stack pointer
+	;get hash pointer
+	lda 1,s
+	cmp #VOID
+	beq +
+		;save back if not void
+		tay
+		lda.w OopStack.id,x
+		sta.w Hash.id,y
+		lda.w OopStack.num,x
+		sta.w Hash.count,y
+		txa
+		HASH_POINTER_TO_INDEX
+		sep #$20
+		sta.w Hash.pntr,y
+		rep #$31
+
++
+	;put stack pointer on stack instead of hash pointer
+	txa
+	sta 1,s
+
+	pea OBJR_noErr	;set return error code
+	pea _core.object.create.return-1	;push return adress
+
+    lda.w OopStack.init,x ;push target subroutine adress
+    dec a
+    pha
+
+	lda.l OopStack.dp,x	;set direct page
+	tcd
+
+	lda 9,s	;get input param A
+	rts
+
+_core.object.create.return:
+	AX16
+	sta 5,s	;store return value A
+	pla 	;get return code
+	beq +
+		jsr _setDead
+
+
++
+	plx
+	pla
+	pld
+	plb
+	rts
+
+/**
+* instanciate object of class
+*
+* @param a <int,16bit>  parameter passed through to class constructor method
+* @param x <int,16bit>  return parameter, contains object hash (pointer) upon successful instanciation
+* @param y <int,16bit>  class id that is to be instanciated
+*/
+extend.object.create:
+	AX16
+	phd
+	pha	;param A
+	cpx.w #$ff
+	bcs +
+		txa
+		clc
+		adc 3,s
+		tax
+
++	
+	phx	;object hash
+
+	;check singleton
+	tya
+	asl a
+	tax
+	lda.l OopClassWordLut,x
+	tax
+	lda.l :OopClassWordLut<<16+OOPR.flags,x
+	lsr a
+	bcc +
+		;is singleton
+		tya
+		jsl extend.oop.seekObjectId
+		bcc +
+			;x now contains oopstack pointer to existing singleton
+			;get hash pointer
+			lda 1,s
+			cmp #VOID
+			beq ++
+				;save back if not void
+				tay
+				lda.w OopStack.id,x
+				sta.w Hash.id,y
+				lda.w OopStack.num,x
+				sta.w Hash.count,y
+				txa
+				HASH_POINTER_TO_INDEX
+				sep #$20
+				sta.w Hash.pntr,y
+				rep #$31
+
+++
+			plx
+			pla
+			pld
+			rtl
+
++	
+	jsr _instanciateClass
+.if HANDLE_ERRORS == 1	
+	bcs +
+		pha
+		jsr core.error.trigger
++	
+.endif
+	;x contains stack pointer
+	;get hash pointer
+	lda 1,s
+	cmp #VOID
+	beq +
+		;save back if not void
+		tay
+		lda.w OopStack.id,x
+		sta.w Hash.id,y
+		lda.w OopStack.num,x
+		sta.w Hash.count,y
+		txa
+		HASH_POINTER_TO_INDEX
+		sep #$20
+		sta.w Hash.pntr,y
+		rep #$31
+
++
+	;put stack pointer on stack instead of hash pointer
+	txa
+	sta 1,s
+	
+	pea OBJR_noErr	;set return error code
+	pea _extend.object.create.return-1	;push return adress
+
+    lda.w OopStack.init,x ;push target subroutine adress
+    dec a
+    pha
+
+	lda.l OopStack.dp,x	;set direct page
+	tcd
+
+	lda 9,s	;get input param A
+	rts
+
+_extend.object.create.return:
+	AX16
+	sta 5,s	;store return value A
+	pla 	;get return code
+	beq +
+		;@todo: x must contain stack pointer, but contains hash pointer
+		jsr _setDead
+
++
+	plx
+	pla
+	pld
+	rtl
+
+
+/**
+*
+* @param a	: parameter
+* @param x	: pointer to hash
+* @param y	: method to call
+*/
+core.object.call:
+	AX16
+	phb	;dummy for long call (so that stack offsets stay the same)
+	phd
+	pha	;input param A
+	pea 0	;space for stack pointer for return
+
+	pea OBJR_noErr	;set return error code
+	pea _core.object.call.return-1	;push return adress
+	cpx.w #$ff
+	bcs +
+		txa
+		clc
+		adc 9,s
+		tax
+
++	
+
+	tya
+	asl a
+	clc
+	adc #OOPR.rInit
+	pha ;push target routine offset
+
+	txy	;pointer to obj hash now stays in y
+	lda.w Hash.id,x
+	and #$ff
+	asl a
+	tax
+	lda.l OopClassWordLut,x
+	clc
+	adc 1,s
+	tax
+	lda.l :OopClassWordLut<<16,x
+
+	dec a
+	sta 1,s
+
+	lda.w Hash.pntr,y
+	INDEX_TO_HASH_POINTER
+	sta 7,s	;save object stack pointer for later
+	tax	;oop stack pointer now stays in x
+
+	;check if loaded data is actually sane or if we need to seek obj and start over
+	lda.w OopStack.id,x
+	cmp.w Hash.id,y
+	bne ++
+		lda.w OopStack.num,x
+		cmp.w Hash.count,y
+		bne ++
+
+		;no information on stack has to be updated if object moves, just stack pointer in x
+		lda.w OopStack.flags,x
+		bit.w #OBJECT.FLAGS.Present
+		bne +
+++
+		;obj no present in requested slot, seek
+		lda.w Hash.count,y
+		tax	
+		lda.w Hash.id,y
+		jsl extend.oop.seekObjectByCountId
+		bcs ++
+	        TRIGGER_ERROR E_ObjNotFound
+				
+++
+		txa
+		HASH_POINTER_TO_INDEX
+		sep #$20
+		sta.w Hash.pntr,y	;update hash pointer with found matching obj-instance in obj stack 
+		rep #$31
+		;also update objstack pointer already on stack
+		lda.w Hash.pntr,y
+		INDEX_TO_HASH_POINTER
+		sta 7,s	;save object stack pointer for later
+
++
+	lda.l OopStack.dp,x	;set direct page
+	tcd
+
+	lda 9,s	;get input param A
+	rts
+
+_core.object.call.return:
+	AX16
+	sta 5,s	;store return value A
+	pla 	;get return code, non-zero means kill
+	beq +
+		jsr _setDead
+
++
+	pla
+	pla
+	pld
+	plb
+	rts
+
+
+
+/**
+* copy class defaults to object zp (self and properties)
+*
+* @param temp.kernel+4<16bit>	pointer to object in object stack
+* y: zp len
+*/
+OopHandlerCopyDefaults:
+	AX16
+  ;x, get pointer to current obj in obj stack
+  phd
+  ldx.w GLOBAL.OopObjStackPtr
+
+  ;y, get pointer to current objs zero page block
+  lda.w OopStack.dp,x
+  tcd
+  ;unroll this completely, cant be bigger than $ff bytes:
+  jsl extend.oop.clearObjectRam
+
+  ;store hash pointer to self. this will break if hash pointer format is ever changed.
+  lda.w OopStack.id,x
+  sta.b iterator.self
+  lda.w OopStack.num,x
+  sta.b iterator.self + 1
+  txa
+  HASH_POINTER_TO_INDEX
+  sep #$20
+  sta.b iterator.self + 3
+  rep #$31
+
+  ;store object default properties
+  lda.w OopStack.properties,x
+  sta.b iterator.properties
+  pld
+  rts
+
+
+;gets 8bit obj class number from a, puts 24bit pointer to obj into temp.kernel1
+OopObjFetchPointer:
+	AX16
+	phx
+	and #$ff
+	asl a
+	tax
+	lda.l OopClassWordLut,x
+	sta temp.kernel+1
+	sep #$20
+	lda.b #:OopClassWordLut
+	sta temp.kernel+3
+	rep #$31
+	plx
+	rts
+
+
+core.object.play:
+	AX16
+	ldx #0
+.if DEBUG == 1	
+	lda #oopStackTst
+	cmp.w STACK_strt
+	beq +
+		TRIGGER_ERROR E_StackOver
++	
+	cmp.w STACK_end
+	beq +
+		TRIGGER_ERROR E_StackOver
++
+.endif
+-	
+		stx.w GLOBAL.OopObjIndex
+		lda.w OopStack.flags,x
+		and.w #(OBJECT.FLAGS.Present | OBJECT.FLAGS.DeleteScheduled | OBJECT.FLAGS.Disabled)
+		cmp.w #OBJECT.FLAGS.Present	
+		bne ++++
+			pea OBJR_noErr	;set return error code
+			pea _core.object.play.return-1	;push return adress
+
+		    lda.w OopStack.current,x ;push target subroutine adress
+		    dec a
+		    pha
+
+			lda.w OopStack.dp,x	;set direct page
+			tcd
+			rts
+
+_core.object.play.return:
+			AX16
+			pla 	;get return code
+			beq +
+				cmp #OBJR_kill
+				beq ++
+					TRIGGER_ERROR E_ValueError
+++	
+			ldx.w GLOBAL.OopObjIndex	;get object stack pointer
+			;don't delete immediately. flag as scheduled for deletion instead. will be collected by garbage collector soon
+			lda.w OopStack.flags,x	;delete obj
+			and #OBJECT.FLAGS.Present ~$ffff
+			ora #OBJECT.FLAGS.DeleteScheduled
+			sta.w OopStack.flags,x
+
+			;set flag to make sure garbage collector only runs when required
+			lda #TRUE
+			sta.w GLOBAL.garbagePresent
+
++
+
+++++
+		;lda self.index
+		lda.w GLOBAL.OopObjIndex
+		clc
+		adc #_sizeof_oopStackObj
+		tax
+		cpx.w GLOBAL.OopObjSlotPtr
+		bcc -
+
+;dont move below routine, depends on upper
+
+/**
+* seek all objects flagged as scheduled for deletion, delete them in oop stack, then free and reorganize zp-ram
+*/
+collectGarbage:
+	AX16
+	lda.w GLOBAL.garbagePresent
+	beq noGarbage
+	ldx.w #0
+
+collectGarbageLoop:
+	  ;seek deletable objects
+	  lda.w OopStack.flags,x	;get flags
+	  and.w #OBJECT.FLAGS.DeleteScheduled
+	  beq collectGarbageSkip
+		  lda.w OopStack.flags,x	;hard-delete obj for good
+		  and #$ff00
+		  sta.w OopStack.flags,x
+
+		  jsr OopHandlerObjRamReorder
+
+collectGarbageSkip:
+	  txa	;update pntr
+	  clc
+	  adc #_sizeof_oopStackObj
+	  tax
+	  cpx.w GLOBAL.OopObjSlotPtr
+	  bcc collectGarbageLoop	;loop till > last obj
+	  beq collectGarbageLoop
+
+	;reset garbage flag
+	lda #0
+	sta.l GLOBAL.garbagePresent
+
+noGarbage:
+  rts
+
+
+
+;input: x,16bit=current obj ram ptr
+;rearranges obj-ram on obj kill, updates dp-pointers of all subsequent dp-buffers
+OopHandlerObjRamReorder:
+	AX16
+	phd
+    pea ZP
+    pld	
+	phx
+	phy
+	lda.l OopStack.dp,x
+	sta temp.kernel+4
+	lda.l OopStack.id,x
+	jsr OopObjFetchPointer
+	ldy #OOPR.zpLen ;get length of zp-ramblock
+	lda [temp.kernel+1],y
+	and #$ff
+	sta temp.kernel+8
+	clc
+	adc temp.kernel+4
+	tax				;source: obj ramblock end
+	sta temp.kernel+6
+
+	ldy temp.kernel+4	;target: obj ramblock base
+	lda.w GLOBAL.OopObjRamPtr	;calc transfer len, get relative active obj end
+	clc
+	adc #OopObjRam-1	;make absolute,-1 for mvn length
+	sec
+	sbc temp.kernel+6
+	bcc RamReorderSkip	;don't mvn if length=0-1
+
+		mvn RAM,RAM
+		ldx #0
+		jsr RelocateRamUpdateDpPointers
+
+RamReorderSkip:
+	lda.w GLOBAL.OopObjRamPtr		;update ram end pntr
+	sec
+	sbc temp.kernel+8						;substract ramblock-length of deleted obj
+	sta.w GLOBAL.OopObjRamPtr
+
+	jsr AdjustObjSlotPntr
+
+	ply
+	plx
+	pld
+	rts
+
+RelocateRamUpdateDpPointers:
+-
+		lda.l OopStack.flags,x
+		bit #OBJECT.FLAGS.Present
+		bne ++
+
+		bit #OBJECT.FLAGS.DeleteScheduled
+		beq +
+	
+++
+			lda.l OopStack.dp,x
+			cmp temp.kernel+4
+			bcc +	;skip if obj ram dp counter lower than that of deleted obj
+		
+				sec
+				sbc temp.kernel+8	;adjust pointer by zp-ramblock-length of killed obj
+				sta.l OopStack.dp,x
+			
++
+		txa
+		clc
+		adc #_sizeof_oopStackObj
+		tax
+		cmp.w GLOBAL.OopObjSlotPtr
+		bcc -
+	rts
+
+;shave some size off objSlotPntr if possible
+AdjustObjSlotPntr:
+	AX16
+	;skip if we're already at first object
+	lda.w GLOBAL.OopObjSlotPtr
+	bpl +
+		TRIGGER_ERROR E_IndexError
+
++	
+	beq +
+		;check if deleted obj was last. if yes, decrease objslotptr
+		sec
+		sbc #_sizeof_oopStackObj
+		tax
+		lda.l OopStack.flags,x
+		bit #(OBJECT.FLAGS.Present | OBJECT.FLAGS.DeleteScheduled)
+		bne +
+			;recursively seek till last active obj
+			stx.w GLOBAL.OopObjSlotPtr
+			jmp AdjustObjSlotPntr
+
++	rts
+
+
+.redef STACK.CPU_FLAGS 9
+.redef STACK.DIRECT_PAGE 7
+.redef STACK.PARAMETER_A 5
+.redef STACK.HASH_POINTER 3
+.redef STACK.CLASS_ID 1
+.redef STACK.METHOD_ID STACK.CLASS_ID
+
+.redef STACK.RETURN_A STACK.PARAMETER_A
+.redef STACK.RETURN_X STACK.HASH_POINTER
+.redef STACK.RETURN_Y STACK.CLASS_ID
+
+
+core.object.exists:
+	AX16
+	cpx.w #$ff
+	bcs +
+		phd
+		txa
+		clc
+		adc 1,s
+		tax
+		pld
+
++
+	lda.w Hash.id,x
+	cmp.w #VOID
+	bne +
+		clc
+		rts
+
++
+	txy	;pointer to obj hash now stays in y
+	lda.w Hash.pntr,y
+	INDEX_TO_HASH_POINTER
+	tax	;oop stack pointer now stays in x
+
+	;check if loaded data is actually sane or if we need to seek obj and start over
+	lda.w OopStack.id,x
+	cmp.w Hash.id,y
+	bne ++
+		lda.w OopStack.num,x
+		cmp.w Hash.count,y
+		bne ++
+
+		;no information on stack has to be updated if object moves, just stack pointer in x
+		lda.w OopStack.flags,x
+		bit.w #OBJECT.FLAGS.Present
+		bne +
+++
+		;obj no present in requested slot, seek
+		lda.w Hash.count,y
+		tax	
+		lda.w Hash.id,y
+		jsl extend.oop.seekObjectByCountId
+		bcs ++
+			lda.w #VOID
+			sta.w Hash.id,y
+			sta.w Hash.count+1,y
+			clc
+			rts
+
+++
+		txa
+		HASH_POINTER_TO_INDEX
+		sep #$20
+		sta.w Hash.pntr,y	;update hash pointer with found matching obj-instance in obj stack 
+		rep #$31
+
+		;x must container oopstack pointer here
++
+	sec
+	rts
+
+
+/**
+ * pause object if found
+ * 
+ * @param x <int, 16bit>    pointer to hash pointer
+ * 
+ * @return c <bool> set if valid object present and paused.
+ */
+core.object.pause:
+	AX16
+  phb
+  pea RAM << 8 | RAM
+  plb
+  plb
+  phd
+
+  jsr core.object.exists
+  bcc +
+    lda.l OopStack.flags,x
+    ora.w #OBJECT.FLAGS.Paused
+    sta.l OopStack.flags,x
+  	lda.l OopStack.pause,x
+  	sta.l OopStack.current,x
+    pld
+    plb
+    sec
+    rts
+
++
+  pld
+  plb
+  clc
+  rts
+
+
+/**
+ * resume play of paused object if found
+ * 
+ * @param x <int, 16bit>    pointer to hash pointer
+ * 
+ * @return c <bool> set if valid object present and resumed.
+ */
+core.object.resume:
+	AX16
+  phb
+  pea RAM << 8 | RAM
+  plb
+  plb
+  phd
+
+  jsr core.object.exists
+  bcc +
+    lda.l OopStack.flags,x
+    and.w #OBJECT.FLAGS.Paused ~$ffff
+    sta.l OopStack.flags,x
+  	lda.l OopStack.play,x
+  	sta.l OopStack.current,x
+    pld
+    plb
+    sec
+    rts
+
++
+  pld
+  plb
+  clc
+  rts
+
+
+/**
+ * check if object is paused
+ * 
+ * @param x <int, 16bit>    hash pointer
+ * 
+ * @return c <bool> set if valid object present and paused.
+ */
+core.object.isPaused:
+	AX16
+  phb
+  pea RAM << 8 | RAM
+  plb
+  plb
+  phd
+
+  jsr core.object.exists
+  bcc +
+    lda.l OopStack.flags,x
+    bit.w #OBJECT.FLAGS.Paused
+    beq +
+
+    pld
+    plb
+    sec
+    rts
+
++
+  pld
+  plb
+  clc
+  rts
+
+
+/**
+ * disable object if found. executes object disable method once.
+ * 
+ * @param x <int, 16bit>    pointer to hash pointer
+ * 
+ * @return c <bool> set if valid object present and paused.
+ */
+core.object.disable:
+	AX16
+  phb
+  pea RAM << 8 | RAM
+  plb
+  plb
+  phd
+  phx
+  jsr core.object.exists
+  ply	;save for disable call
+  bcc +
+    lda.l OopStack.flags,x
+    bit.w #OBJECT.FLAGS.Disabled
+    beq +++
+    	phx		
+    	lda.l OopStack.id,x
+    	and.w #$ff
+    	pha
+    	TRIGGER_ERROR E_ObjDisabled
+
++++
+    ora.w #OBJECT.FLAGS.Disabled
+    sta.l OopStack.flags,x
+    pld
+    plb
+
+    ;call disable here:
+    tyx
+	ldy #iterator.library.disable.MTD ;method
+
+	jsr core.object.call
+    sec
+    rts
+
++
+  pld
+  plb
+  clc
+  rts
+
+/**
+ * enable object if found. executes object enable method once.
+ * 
+ * @param x <int, 16bit>    pointer to hash pointer
+ * 
+ * @return c <bool> set if valid object present and paused.
+ */
+core.object.enable:
+	AX16
+  phb
+  pea RAM << 8 | RAM
+  plb
+  plb
+  phd
+  phx
+  jsr core.object.exists
+  ply	;save for disable call
+  bcc +
+    lda.l OopStack.flags,x
+    bit.w #OBJECT.FLAGS.Disabled
+    bne +++
+    	TRIGGER_ERROR E_ObjEnabled
+
++++
+
+    and.w #OBJECT.FLAGS.Disabled ~$ffff
+    sta.l OopStack.flags,x
+    pld
+    plb
+
+    ;call enable here:
+    tyx
+	ldy #iterator.library.enable.MTD ;method
+
+	jsr core.object.call    
+    sec
+    rts
+
++
+  pld
+  plb
+  clc
+  rts
+
+
+/**
+ * check if object is disabled
+ * 
+ * @param x <int, 16bit>    hash pointer
+ * 
+ * @return c <bool> set if valid object present and paused.
+ */
+core.object.isDisabled:
+	AX16
+  phb
+  pea RAM << 8 | RAM
+  plb
+  plb
+  phd
+
+  jsr core.object.exists
+  bcc +
+    lda.l OopStack.flags,x
+    bit.w #OBJECT.FLAGS.Disabled
+    beq +
+
+    pld
+    plb
+    sec
+    rts
+
++
+  pld
+  plb
+  clc
+  rts
+
+.if DEBUG == 1
+;debug routine, asserts accu and index regs are 16 bit wide (to find bugs)
+core.oop.assertAx16:
+	php
+	rep #$31
+	pha
+	lda 3,s
+	and.w #(CPU_FLAG.ACCU_WIDTH | CPU_FLAG.INDEX_WIDTH)
+	cmp.w #0
+	beq +
+		TRIGGER_ERROR E_BadRegisterWidth
++	
+	pla
+	plp
+	rtl
+
+core.oop.assertA8:
+	php
+	rep #$31
+	pha
+	lda 3,s
+	and.w #(CPU_FLAG.ACCU_WIDTH | CPU_FLAG.INDEX_WIDTH)
+	cmp.w #CPU_FLAG.ACCU_WIDTH
+	beq +
+		TRIGGER_ERROR E_BadRegisterWidth
+
++	
+	pla
+	plp
+	rtl
+.endif
+
+;generic obj-kill routine
+object.library.kill:
+	AX16
+	lda #OBJR_kill
+	sta 3,s
+	rts
+
+.ends
+
+.base BSL
+.bank BANK.DATA
+.section "extend.oop" superfree
+
+.macro OOP_SEEK_OBJECT_ID
+	A8
+	cmp.w (OopStack.id&$ffff)+(\@*oopStackObj.length)
+	bne +
+		pha
+		lda.w (OopStack.flags&$ffff)+(\@*oopStackObj.length)
+		and.b #(OBJECT.FLAGS.Present | OBJECT.FLAGS.DeleteScheduled)
+		cmp.b #OBJECT.FLAGS.Present
+		bne ++		
+			;match and present
+			ldx.w #(\@*oopStackObj.length)
+			pla
+			plp
+			sec
+			rtl
+++
+		pla
+
++
+.endm
+
+extend.oop.seekObjectId:
+	AX16
+	php
+	sep #$20
+.rept maxNumberOopObjs
+	OOP_SEEK_OBJECT_ID
+.endr	
+	plp
+	clc
+	rtl
+
+
+.macro OOP_SEEK_OBJECT_BY_COUNT_ID
+	A8
+	cpx.w (OopStack.num&$ffff)+(\@*oopStackObj.length)
+	bne +
+	cmp.w (OopStack.id&$ffff)+(\@*oopStackObj.length)
+	bne +
+		pha
+		lda.w (OopStack.flags&$ffff)+(\@*oopStackObj.length)
+		and.b #(OBJECT.FLAGS.Present | OBJECT.FLAGS.DeleteScheduled)
+		cmp.b #OBJECT.FLAGS.Present
+		bne ++		
+			;match and present
+			ldx.w #(\@*oopStackObj.length)
+			pla
+			plp
+			sec
+			rtl
+++
+		pla
+
++
+.endm
+
+;a:id, only lower 8 bits valid!
+;x:count
+extend.oop.seekObjectByCountId:
+	AX16
+	php
+	sep #$20
+.rept maxNumberOopObjs
+	OOP_SEEK_OBJECT_BY_COUNT_ID
+.endr	
+	plp
+	clc
+	rtl
+
+
+
+
+
+.macro OOP_SEEK_FREE_SLOT
+	A8
+	bit.w (OopStack.flags&$ffff)+(\@*oopStackObj.length)
+	bne +
+		;found free slot
+		ldx.w #(\@*oopStackObj.length)
+		plp
+		sec
+		rtl
+
++
+.endm
+
+/**
+*
+* @param x <int, 16bit> start offset. this must be a valid relative pointer to obj-slot
+* @return a <int, 16bit>    relative pointer to found free slot
+* @return c <bool>  true if free slot found
+*/
+extend.oop.seekFreeSlot:
+	AX16
+	php
+	sep #$20
+	lda.b #(OBJECT.FLAGS.Present | OBJECT.FLAGS.DeleteScheduled)
+.rept maxNumberOopObjs
+	OOP_SEEK_FREE_SLOT
+.endr	
+	plp
+	clc
+	rtl
+
+
+.def CLEAR_OOP_RAM_COUNT 128
+.macro CLEAR_OOP_RAM
+	stz 0+((CLEAR_OOP_RAM_COUNT - 1 - \@)*2)
+.endm
+
+/**
+* dp: start of oop ram
+* y: byte length
+*/
+extend.oop.clearObjectRam:
+	AX16
+	;clear last byte, assume obj ram area never smaller than a word
+	phx
+	tyx
+	dex
+	dex
+	lda.w #0
+	sta.b 0,x
+	plx
+	tya
+	lsr a
+	pha
+	lda.w #CLEAR_OOP_RAM_COUNT
+	sec
+	sbc 1,s
+	asl a
+	clc
+	adc.w #_clearRamUnrolled-1
+	sta 1,s
+	rts
+
+_clearRamUnrolled:
+	.rept CLEAR_OOP_RAM_COUNT
+	CLEAR_OOP_RAM
+	.endr
+	rtl
+
+.ends

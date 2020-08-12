@@ -1,0 +1,117 @@
+/**
+* First miniboss (Orkan)
+*
+*/
+
+  SCRIPT miniboss
+
+  .redef obj.script.slave hashPtr.1
+  .redef obj.miniboss hashPtr.2
+
+  .redef obj.hud this._tmp
+  .redef obj.player this._tmp+4
+
+    SET_CUTSCENE_MANDATORY
+
+    CUTSCENE_KILL_ENEMIES
+
+    pea 0
+    pea 0
+    pea SPRITE.orkan.dummy.PTR
+    pea BERZERK.FULL
+    pea 0
+    pea 0
+    pei (dimension.position.y+1)
+    pei (dimension.position.x+1)
+    SCRIPT_NEW lifeform.miniboss.CLS.PTR obj.miniboss
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    CUTSCENE_ACQUIRE_OBJECT lifeform.player.CLS.PTR obj.player
+
+    HUD_DISABLE obj.hud
+    CUTSCENE_PAUSE obj.miniboss
+    CUTSCENE_PAUSE_PLAYER
+
+    AUDIO_FADE AUDIO.VOLUME.MUTE
+
+    WAIT_AUDIO_FADE_COMPLETE    
+    
+    SCRIPT_JSR core.audio.stopSong
+
+    SAVE
+
+    SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.thisIsIt text.dialogue.bareHands FALSE
+    WAIT_FOR obj.script.slave
+
+    CUTSCENE_RESUME obj.miniboss
+
+    CUTSCENE_WAIT
+    SCRIPT_CALL lifeform.library.oncommand.MTD obj.miniboss LIFEFORM.COMMAND.CUTSCENE.START
+
+    SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.manEnough FALSE
+    lda.w #Song.streetfighter.PTR
+    SCRIPT_JSR core.audio.playSong
+    WAIT_FOR obj.script.slave
+    SCRIPT_CALL lifeform.library.oncommand.MTD obj.miniboss LIFEFORM.COMMAND.CUTSCENE.END
+
+
+
+    CUTSCENE_RESUME_PLAYER
+
+    HUD_ENABLE obj.hud
+    SAVE
+
+    ldx.w #obj.miniboss
+    SCRIPT_JSR core.object.exists
+    bcc +
+      rts
+
++
+
+  lda.w #DIALOGUE.STATE.VENGEANCE
+  sta.w GLOBAL.dialogueState
+  
+  SCRIPT_JSR core.audio.stopSong
+
+  HUD_DISABLE obj.hud
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.killedHim text.dialogue.meansWar FALSE
+  WAIT_FOR obj.script.slave
+
+  HUD_ENABLE obj.hud
+
+  CUTSCENE_WAIT
+
+  lda.w #Song.stage3.PTR
+  SCRIPT_JSR core.audio.playSong
+  pea 0
+  pea 0
+  pea none
+  pea 0 ;87*8
+  pea 0 ;9*8
+  pea level.sony_hq_2.PTR
+  pea 0
+  pea 0
+  pei (dimension.position.y+1)
+  lda dimension.position.x+1
+  pha
+  SCRIPT_NEW level.exit.CLS.PTR VOID  
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+
+  SAVE
+
+  DIE

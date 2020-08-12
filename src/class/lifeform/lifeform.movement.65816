@@ -1,0 +1,3531 @@
+/**
+* Helper functions for lifeform movement and level map interaction/collision
+* 
+*/
+
+.include "src/class/lifeform/lifeform.movement.h"
+
+.base BSL
+.bank BANK.DATA 
+.section "extend.lifeform.movement.evaluate"
+
+
+extern.lifeform.movement.init:
+  AX16
+  jsl extern.lifeform.movement.initPosition
+  ;disable tile changed triggers (so we don't fall if current standing tile is lower than previous)
+
+  ;init tile
+  jsr _updateTiles
+
+  lda.w #ANIMATION.FLAGS.IS_LOOPING
+  tsb animation.flags.static
+
+  ;start out falling so that we touch ground
+  sep #$20
+  lda #LIFEFORM.STATE.FALLING
+  sta lifeform.state
+  rep #$31
+
+  lda #movement.void.CLB
+  sta lifeform.callback.touch.wall
+  sta lifeform.callback.touch.floor
+  sta lifeform.callback.touch.lifeform
+
+  lda.w #LIFEFORM.CARRY.END.Y
+  sta lifeform.carry.height
+  rtl 
+
+extern.lifeform.movement.initPosition:
+  AX16
+  stz dimension.speed.x
+  stz dimension.speed.y
+  stz dimension.acceleration.x
+  stz dimension.acceleration.y
+
+  stz lifeform.controller.buffer
+
+  jsr lifeform.movement.shiftToBasepoint
+  rtl
+
+
+extern.lifeform.movement.evaluate:
+  jsr lifeform.library.movement.evaluate
+  rtl
+
+/**
+* 
+* @param a<int, 16bit>  abilities bitmap to process
+*/
+lifeform.library.movement.evaluate:
+  AX16
+  and lifeform.abilities
+  sta lifeform.actions
+
+  lda lifeform.actions.last
+  eor.w #$ffff          ;xor
+  sta lifeform.actions.trigger
+
+  lda lifeform.actions
+  sta lifeform.actions.last
+  and lifeform.actions.trigger
+  sta lifeform.actions.trigger
+
+  lda lifeform.freeze
+  beq +
+    dec lifeform.freeze
+    rts
+
++  
+  ;hack to make sure that grabbed objects arent killed during cutscene or level switch
+  lda.w #OBJECT.PROPERTIES.isGrabbed
+  trb iterator.properties
+
+  lda iterator.properties
+  bit.w #OBJECT.PROPERTIES.isPlayer
+  bne +
+    lda.w #OBJECT.PROPERTIES.isLevelMember
+    tsb iterator.properties
+
++
+
+  lda lifeform.state
+  and.w #$ff
+  asl
+  tax
+  jsr (_stateLUT,x)
+
+  lda lifeform.condition
+  and.w #$ff
+  asl
+  tax
+  jsr (_applyTile.current.LUT,x)
+
+  ;apply acceleration
+  lda dimension.speed.x
+  clc
+  adc dimension.acceleration.x
+  sta dimension.speed.x
+
+  lda dimension.speed.y
+  clc
+  adc dimension.acceleration.y
+  sta dimension.speed.y
+
+  ora dimension.speed.x
+  beq _skipPositionUpdate
+
+  ;clamp speed to < 1 tile/frame
+  lda dimension.speed.y
+  bmi ++
+    cmp.w #LIFEFORM.SPEED.MAX
+    bcc +
+      lda.w #LIFEFORM.SPEED.MAX
+      bra +
+
+++
+    cmp.w #-LIFEFORM.SPEED.MAX
+    bcs +
+      lda.w #-LIFEFORM.SPEED.MAX
++
+  sta dimension.speed.y
+  lda dimension.speed.x
+  bmi ++
+    cmp.w #LIFEFORM.SPEED.MAX
+    bcc +
+      lda.w #LIFEFORM.SPEED.MAX
+      bra +
+
+++
+    cmp.w #-LIFEFORM.SPEED.MAX
+    bcs +
+      lda.w #-LIFEFORM.SPEED.MAX
++
+  sta dimension.speed.x
+
+  jsr lifeform.movement.applySpeed
+
+  lda lifeform.friction
+  jsr lifeform.movement.applyFriction
+
+  ;update current tile if moved or if above void
+  pea 0
+
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  lsr a
+  lsr a
+  lsr a
+  sta 1,s
+  lda dimension.position.last.y
+  clc
+  adc dimension.collision.basepoint.y
+  lsr a
+  lsr a
+  lsr a
+  cmp 1,s
+  bne ++
+
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  lsr a
+  lsr a
+  lsr a
+  sta 1,s
+  lda dimension.position.last.x
+  clc
+  adc dimension.collision.basepoint.x
+  lsr a
+  lsr a
+  lsr a
+  cmp 1,s
+  beq +
+
+++
+    jsr _updateTiles
+
++
+  pla
+
+  ;keep last position
+  lda dimension.position.y+1
+  sta dimension.position.last.y
+  lda dimension.position.x+1
+  sta dimension.position.last.x
+
+_skipPositionUpdate:
+  sep #$20
+  lda lifeform.combo.timer
+  beq +
+    dec lifeform.combo.timer
+    bra ++
++
+  stz lifeform.combo.counter
+++
+  lda lifeform.invincibility.timer
+  beq +
+    dec lifeform.invincibility.timer
+
++
+  lda lifeform.invincibility.invisible.timer
+  beq +
+    dec lifeform.invincibility.invisible.timer
+
++
+  rep #$31  
+
+  lda lifeform.grabbed.object
+  cmp.w #VOID
+  beq +  
+    jsl extern.lifeform.getCarryPosition
+    pei (dimension.direction)
+    phy
+    phx
+    SCRIPT_TRY lifeform.library.setPosition.MTD lifeform.grabbed.object
+    pla
+    pla
+    pla
+
++  
+  rts
+
+lifeform.movement.applySpeed:
+  AX16
+  lda lifeform.condition
+  and.w #$ff
+  asl
+  tax
+  jsr (_applySpeed.current.LUT,x)
+
+  ;clamp to level size
+  lda dimension.position.x +1
+  and.w #LEVEL.SIZE.X-1
+  sta dimension.position.x +1
+
+  lda dimension.position.y +1
+  and.w #LEVEL.SIZE.Y-1
+  sta dimension.position.y +1
+
+  rts
+
+_getSpeedDirection:
+  .accu 16
+  .index 16
+  pea 0
+  lda dimension.speed.x
+  beq +
+    bmi ++
+      lda.w #1
+      ora 1,s
+      sta 1,s
+      bra +
+++
+      lda.w #2
+      ora 1,s
+      sta 1,s
+
++
+  lda dimension.speed.y
+  beq +
+    bmi ++
+      lda.w #4
+      ora 1,s
+      sta 1,s
+      bra +
+++
+      lda.w #8
+      ora 1,s
+      sta 1,s
+
++
+  pla
+  rts
+
+
+_applySpeed.current.LUT:
+  .dw _applySpeed.current.grounded
+  .dw _applySpeed.current.airborne
+  .dw _applySpeed.current.ethereal
+  .dw _applySpeed.current.flying
+  .dw _applySpeed.current.dashing
+  .dw _applySpeed.current.bouncing
+
+_applySpeed.current.grounded:
+  jsr _getSpeedDirection
+  asl a
+  tax
+  ldy #LIFEFORM.TILE.BOUNDARY.GROUNDED
+  jsr (_applySpeed.lut,x)
+  clc
+  rts
+
+_applySpeed.current.airborne:
+  jsr _getSpeedDirection
+  asl a
+  tax
+  ldy #LIFEFORM.TILE.BOUNDARY.AIRBORNE
+  jsr (_applySpeed.lut,x)
+  sec
+  rts
+
+_applySpeed.current.ethereal:
+  jsr _getSpeedDirection
+  asl a
+  tax
+  ldy #LIFEFORM.TILE.BOUNDARY.ETHEREAL
+  jsr (_applySpeed.lut,x)
+  clc
+  rts
+
+_applySpeed.current.flying:
+  jsr _getSpeedDirection
+  asl a
+  tax
+  ldy #LIFEFORM.TILE.BOUNDARY.FLYING
+  jsr (_applySpeed.lut,x)
+  sec
+  rts
+
+_applySpeed.current.dashing:
+  jsr _getSpeedDirection
+  asl a
+  tax
+  ldy #LIFEFORM.TILE.BOUNDARY.DASHING
+  jsr (_applySpeed.lut,x)
+  clc
+  rts
+
+_applySpeed.current.bouncing:
+  jsr _getSpeedDirection
+  asl a
+  tax
+
+  ldy #LIFEFORM.TILE.BOUNDARY.BOUNCING
+  jsr (_applySpeed.lut,x)
+  clc
+  rts
+
+_applySpeed.lut:
+  .dw _applySpeed.none
+  .dw _applySpeed.right
+  .dw _applySpeed.left
+  .dw _applySpeed.none
+  .dw _applySpeed.down
+  .dw _applySpeed.down.right
+  .dw _applySpeed.down.left
+  .dw _applySpeed.none
+  .dw _applySpeed.up
+  .dw _applySpeed.up.right
+  .dw _applySpeed.up.left
+  .dw _applySpeed.none
+  .dw _applySpeed.none
+  .dw _applySpeed.none
+  .dw _applySpeed.none
+  .dw _applySpeed.none
+
+.def LIFEFORM.OFFSET.ELEVATION_CHECK.HORIZONTAL 0
+.def LIFEFORM.OFFSET.ELEVATION_CHECK.VERTICAL 0
+
+_applySpeed.none:
+  AX16
+  rts
+
+_applySpeed.right:
+  AX16
+  ;sanity check: it's possible that wall touch callback rewrote speed, leading to wrap around issues here
+  lda.b dimension.speed.x
+  bmi +
+
+  lda.b dimension.position.x
+  clc
+  adc.b dimension.speed.x
+  sta.b dimension.position.x
+  lda dimension.position.x +2
+  adc #0
+  sta dimension.position.x +2
+
+  jsr _checkTileBoundaryCrossed.x
+  bcc +
+    lda dimension.position.x +1
+    cmp.w GLOBAL.screen.playfield.size.x
+    bcs ++
+
+    pea LIFEFORM.OFFSET.ELEVATION_CHECK.HORIZONTAL
+    lda dimension.position.y+1
+    clc
+    adc dimension.collision.basepoint.y
+    pha
+    lda dimension.position.x+1
+    clc
+    adc dimension.collision.basepoint.x
+    clc
+    adc #LIFEFORM.COLLISION.PADDING
+    pha   
+    jsl extern.level.getCollisionTile
+
+    tyx
+    jsr (_checkBoundaryTile.LUT,x)
+    plx
+    plx
+    plx
+    bcc +
+++
+      ;move to outer right edge of current tile if we hit something
+      lda dimension.position.last.x
+      clc
+      adc dimension.collision.basepoint.x
+      sta dimension.position.x +1
+      lda dimension.position.x
+      ora.w #$07ff
+      sta dimension.position.x
+      lda dimension.position.x +1
+      sec
+      sbc dimension.collision.basepoint.x
+      sta dimension.position.x +1
+
+      lda.w #MATH.000_DEG
+      tyx
+      jsr (_boundaryTileHit.LUT,x)
+
++
+  rts
+
+_applySpeed.left:
+  AX16
+  ;sanity check: it's possible that wall touch callback rewrote speed, leading to wrap around issues here
+  lda.b dimension.speed.x
+  bpl +
+
+  lda.b dimension.position.x
+  clc
+  adc.b dimension.speed.x
+  sta.b dimension.position.x
+  lda dimension.position.x +2
+  sbc #0
+  sta dimension.position.x +2
+
+  jsr _checkTileBoundaryCrossed.x
+  bcc +
+    lda dimension.position.x +1
+    cmp.w GLOBAL.screen.playfield.size.x
+    bcs ++
+
+    pea LIFEFORM.OFFSET.ELEVATION_CHECK.HORIZONTAL
+    lda dimension.position.y+1
+    clc
+    adc dimension.collision.basepoint.y
+    pha
+    lda dimension.position.x+1
+    clc
+    adc dimension.collision.basepoint.x
+    sec
+    sbc #LIFEFORM.COLLISION.PADDING
+    pha   
+    jsl extern.level.getCollisionTile
+    
+
+    tyx
+    jsr (_checkBoundaryTile.LUT,x)
+    plx
+    plx
+    plx
+    bcc +
+++
+      ;move to outer left edge of current tile if we hit something
+      lda dimension.position.last.x
+      clc
+      adc dimension.collision.basepoint.x
+      sta dimension.position.x +1
+      lda dimension.position.x
+      and.w #$f800
+      sta dimension.position.x
+      lda dimension.position.x +1
+      sec
+      sbc dimension.collision.basepoint.x
+      sta dimension.position.x +1
+
+      lda.w #MATH.180_DEG
+      tyx
+      jsr (_boundaryTileHit.LUT,x)
+
++
+  rts
+
+
+_applySpeed.down:
+  ;sanity check: it's possible that wall touch callback rewrote speed, leading to wrap around issues here
+  lda.b dimension.speed.y
+  bmi +
+
+  lda.b dimension.position.y
+  clc
+  adc.b dimension.speed.y
+  sta.b dimension.position.y
+  lda dimension.position.y +2
+  adc #0
+  sta dimension.position.y +2
+
+  jsr _checkTileBoundaryCrossed.y
+  bcc +
+    lda dimension.position.y +1
+    cmp.w GLOBAL.screen.playfield.size.y
+    bcs ++
+
+    pea LIFEFORM.OFFSET.ELEVATION_CHECK.VERTICAL
+    lda dimension.position.y+1
+    clc
+    adc dimension.collision.basepoint.y
+    pha
+    lda dimension.position.x+1
+    clc
+    adc dimension.collision.basepoint.x
+    pha
+    jsl extern.level.getCollisionTile
+
+
+    tyx
+    jsr (_checkBoundaryTile.LUT,x)
+    plx
+    plx
+    plx
+    bcc +
+++
+
+      ;move to outer lower edge of current tile if we hit something
+      lda dimension.position.last.y
+      clc
+      adc dimension.collision.basepoint.y
+      sta dimension.position.y +1
+      lda dimension.position.y
+      ora.w #$07ff
+      sta dimension.position.y
+      lda dimension.position.y +1
+      sec
+      sbc dimension.collision.basepoint.y
+      sta dimension.position.y +1
+
+      lda.w #MATH.090_DEG
+      tyx
+      jsr (_boundaryTileHit.LUT,x)
+
++
+  rts
+
+_applySpeed.up:
+  ;sanity check: it's possible that wall touch callback rewrote speed, leading to wrap around issues here
+  lda.b dimension.speed.y
+  bpl +
+
+  lda.b dimension.position.y
+  clc
+  adc.b dimension.speed.y
+  sta.b dimension.position.y
+  lda dimension.position.y +2
+  sbc #0
+  sta dimension.position.y +2
+
+  jsr _checkTileBoundaryCrossed.y
+  bcc +
+    lda dimension.position.y +1
+    cmp.w GLOBAL.screen.playfield.size.y
+    bcs ++
+
+    pea LIFEFORM.OFFSET.ELEVATION_CHECK.VERTICAL
+    lda dimension.position.y+1
+    clc
+    adc dimension.collision.basepoint.y
+    pha
+    lda dimension.position.x+1
+    clc
+    adc dimension.collision.basepoint.x
+    pha
+    jsl extern.level.getCollisionTile
+
+    tyx
+    jsr (_checkBoundaryTile.LUT,x)
+    plx
+    plx
+    plx
+    bcc +
+++
+      ;move to outer upper edge of current tile if we hit something
+      lda dimension.position.last.y
+      clc
+      adc dimension.collision.basepoint.y
+      sta dimension.position.y +1
+      lda dimension.position.y
+      and.w #$f800
+      sta dimension.position.y
+      lda dimension.position.y +1
+      sec
+      sbc dimension.collision.basepoint.y
+      sta dimension.position.y +1
+
+      ;head bopped against ceiling, stop jumping
+      lda.w #LIFEFORM.HEAD.BOP.IMPULSE
+      sta dimension.speed.y
+      stz dimension.acceleration.y
+
+      lda.w #MATH.270_DEG
+      tyx
+      jsr (_boundaryTileHit.LUT,x)
+
++
+  rts
+
+_applySpeed.down.right:
+  phy
+  jsr _applySpeed.right
+  ply
+  phy
+  jsr _applySpeed.down
+  ply
+
+  jsr _checkTileBoundaryCrossed.x
+  bcc +
+
+  jsr _checkTileBoundaryCrossed.y
+  bcc +
+    lda dimension.position.x +1
+    cmp.w GLOBAL.screen.playfield.size.x
+    bcs ++
+    lda dimension.position.y +1
+    cmp.w GLOBAL.screen.playfield.size.y
+    bcs ++
+
+    pea LIFEFORM.OFFSET.ELEVATION_CHECK.HORIZONTAL
+    lda dimension.position.y+1
+    clc
+    adc dimension.collision.basepoint.y
+    pha
+    lda dimension.position.x+1
+    clc
+    adc dimension.collision.basepoint.x
+    clc
+    adc #LIFEFORM.COLLISION.PADDING
+    pha
+    jsl extern.level.getCollisionTile
+
+    tyx
+    jsr (_checkBoundaryTile.LUT,x)
+    plx
+    plx
+    plx
+    bcc +
+++
+      ;move to outer lower right edge of current tile if we hit something
+      lda dimension.position.last.y
+      clc
+      adc dimension.collision.basepoint.y
+      sta dimension.position.y +1
+      lda dimension.position.y
+      ora.w #$07ff
+      sta dimension.position.y
+      lda dimension.position.y +1
+      sec
+      sbc dimension.collision.basepoint.y
+      sta dimension.position.y +1
+
+      lda dimension.position.last.x
+      clc
+      adc dimension.collision.basepoint.x
+      sta dimension.position.x +1
+      lda dimension.position.x
+      ora.w #$07ff
+      sta dimension.position.x
+      lda dimension.position.x +1
+      sec
+      sbc dimension.collision.basepoint.x
+      sta dimension.position.x +1
+
++
+  rts
+
+_applySpeed.down.left:
+  phy
+  jsr _applySpeed.left
+  ply
+  phy
+  jsr _applySpeed.down
+  ply
+
+  jsr _checkTileBoundaryCrossed.x
+  bcc +
+
+  jsr _checkTileBoundaryCrossed.y
+  bcc +
+    lda dimension.position.x +1
+    cmp.w GLOBAL.screen.playfield.size.x
+    bcs ++
+    lda dimension.position.y +1
+    cmp.w GLOBAL.screen.playfield.size.y
+    bcs ++
+
+    pea LIFEFORM.OFFSET.ELEVATION_CHECK.HORIZONTAL
+    lda dimension.position.y+1
+    clc
+    adc dimension.collision.basepoint.y
+    pha
+    lda dimension.position.x+1
+    clc
+    adc dimension.collision.basepoint.x
+    sec
+    sbc #LIFEFORM.COLLISION.PADDING
+    pha
+    jsl extern.level.getCollisionTile
+
+    tyx
+    jsr (_checkBoundaryTile.LUT,x)
+    plx
+    plx
+    plx
+    bcc +
+++
+      ;move to outer lower right edge of current tile if we hit something
+      lda dimension.position.last.y
+      clc
+      adc dimension.collision.basepoint.y
+      sta dimension.position.y +1
+      lda dimension.position.y
+      ora.w #$07ff
+      sta dimension.position.y
+      lda dimension.position.y +1
+      sec
+      sbc dimension.collision.basepoint.y
+      sta dimension.position.y +1
+
+
+      lda dimension.position.last.x
+      clc
+      adc dimension.collision.basepoint.x
+      sta dimension.position.x +1
+      lda dimension.position.x
+      and.w #$f800
+      sta dimension.position.x
+      lda dimension.position.x +1
+      sec
+      sbc dimension.collision.basepoint.x
+      sta dimension.position.x +1
+
+
+
++
+  rts
+
+_applySpeed.up.right:
+  phy
+  jsr _applySpeed.right
+  ply
+  phy
+  jsr _applySpeed.up
+  ply
+
+  jsr _checkTileBoundaryCrossed.x
+  bcc +
+
+  jsr _checkTileBoundaryCrossed.y
+  bcc +
+    lda dimension.position.x +1
+    cmp.w GLOBAL.screen.playfield.size.x
+    bcs ++
+    lda dimension.position.y +1
+    cmp.w GLOBAL.screen.playfield.size.y
+    bcs ++
+
+    pea LIFEFORM.OFFSET.ELEVATION_CHECK.HORIZONTAL
+    lda dimension.position.y+1
+    clc
+    adc dimension.collision.basepoint.y
+    pha
+    lda dimension.position.x+1
+    clc
+    adc dimension.collision.basepoint.x
+    clc
+    adc #LIFEFORM.COLLISION.PADDING
+    pha
+    jsl extern.level.getCollisionTile
+
+    tyx
+    jsr (_checkBoundaryTile.LUT,x)
+    plx
+    plx
+    plx
+    bcc +
+++
+      ;move to outer upper right edge of current tile if we hit something
+      lda dimension.position.last.y
+      clc
+      adc dimension.collision.basepoint.y
+      sta dimension.position.y +1
+      lda dimension.position.y
+      and.w #$f800
+      sta dimension.position.y
+      lda dimension.position.y +1
+      sec
+      sbc dimension.collision.basepoint.y
+      sta dimension.position.y +1
+
+
+      lda dimension.position.last.x
+      clc
+      adc dimension.collision.basepoint.x
+      sta dimension.position.x +1
+      lda dimension.position.x
+      ora.w #$07ff
+      sta dimension.position.x
+      lda dimension.position.x +1
+      sec
+      sbc dimension.collision.basepoint.x
+      sta dimension.position.x +1
+
++
+  rts
+
+_applySpeed.up.left:
+  phy
+  jsr _applySpeed.left
+  ply
+  phy
+  jsr _applySpeed.up
+  ply
+
+  jsr _checkTileBoundaryCrossed.x
+  bcc +
+
+  jsr _checkTileBoundaryCrossed.y
+  bcc +
+    lda dimension.position.x +1
+    cmp.w GLOBAL.screen.playfield.size.x
+    bcs ++
+    lda dimension.position.y +1
+    cmp.w GLOBAL.screen.playfield.size.y
+    bcs ++
+
+    pea LIFEFORM.OFFSET.ELEVATION_CHECK.HORIZONTAL
+    lda dimension.position.y+1
+    clc
+    adc dimension.collision.basepoint.y
+    pha
+    lda dimension.position.x+1
+    clc
+    adc dimension.collision.basepoint.x
+    sec
+    sbc #LIFEFORM.COLLISION.PADDING
+    pha
+    jsl extern.level.getCollisionTile
+
+    tyx
+    jsr (_checkBoundaryTile.LUT,x)
+    plx
+    plx
+    plx
+    bcc +
+++
+      ;move to outer lower right edge of current tile if we hit something
+      lda dimension.position.last.y
+      clc
+      adc dimension.collision.basepoint.y
+      sta dimension.position.y +1
+      lda dimension.position.y
+      and.w #$f800
+      sta dimension.position.y
+      lda dimension.position.y +1
+      sec
+      sbc dimension.collision.basepoint.y
+      sta dimension.position.y +1
+
+      lda dimension.position.last.x
+      clc
+      adc dimension.collision.basepoint.x
+      sta dimension.position.x +1
+      lda dimension.position.x
+      and.w #$f800
+      sta dimension.position.x
+      lda dimension.position.x +1
+      sec
+      sbc dimension.collision.basepoint.x
+      sta dimension.position.x +1
+
+
+
++
+  rts
+
+
+/**
+* returns carry set if last movement caused tile boundary cross
+*/
+_checkTileBoundaryCrossed.x:
+  ;check for tile boundary cross
+  lda.b dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  lsr a
+  lsr a
+  lsr a
+  pha
+  lda.b dimension.position.last.x
+  clc
+  adc dimension.collision.basepoint.x
+  lsr a
+  lsr a
+  lsr a
+  cmp 1,s
+  bne +
+    pla
+    clc
+    rts
+
++
+  pla
+  sec
+  rts
+
+/**
+* returns carry set if last movement caused tile boundary cross
+*/
+_checkTileBoundaryCrossed.y:
+  ;check for tile boundary cross
+  lda.b dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  lsr a
+  lsr a
+  lsr a
+  pha
+  lda.b dimension.position.last.y
+  clc
+  adc dimension.collision.basepoint.y
+  lsr a
+  lsr a
+  lsr a
+  cmp 1,s
+  bne +
+    pla
+    clc
+    rts
+
++
+  pla
+  sec
+  rts
+
+_boundaryTileHit.LUT:
+  .dw _boundaryTileHit.grounded
+  .dw _boundaryTileHit.airborne
+  .dw _boundaryTileHit.ethereal
+  .dw _boundaryTileHit.flying
+  .dw _boundaryTileHit.dashing
+  .dw _boundaryTileHit.bouncing
+
+
+_boundaryTileHit.grounded:
+_boundaryTileHit.airborne:
+  AX16
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  asl a
+  tax
+  jmp (_boundaryTileHit.regular.lut,x)
+
+_boundaryTileHit.regular.lut:
+  .dw _boundaryTileHit.regular.x
+  .dw _boundaryTileHit.regular.down
+  .dw _boundaryTileHit.regular.x
+  .dw _boundaryTileHit.regular.up
+
+_boundaryTileHit.regular.x:
+  AX16
+  ldx lifeform.callback.touch.wall
+  jsl extern.callback.execute
+  rts
+
+_boundaryTileHit.regular.down:
+_boundaryTileHit.regular.up:
+_boundaryTileHit.ethereal:
+_boundaryTileHit.flying:
+  rts
+
+_boundaryTileHit.dashing:
+  stz dimension.speed.x
+  stz dimension.acceleration.x  
+  rts
+
+_boundaryTileHit.bouncing:
+  AX16
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  asl a
+  tax
+  jmp (_boundaryTileHit.bouncing.lut,x)
+
+_boundaryTileHit.bouncing.lut:
+  .dw _boundaryTileHit.bouncing.x
+  .dw _boundaryTileHit.bouncing.y
+  .dw _boundaryTileHit.bouncing.x
+  .dw _boundaryTileHit.bouncing.y
+
+lifeform.movement.bounce.x:
+_boundaryTileHit.bouncing.x:
+  AX16
+  lda dimension.speed.x
+  eor.w #$ffff
+  inc a
+  sta dimension.speed.x
+  stz dimension.acceleration.x
+  rts
+
+;only half speed if bouncing vertically - gravity
+_boundaryTileHit.bouncing.y:
+  AX16
+  lda dimension.speed.y
+  bmi +
+    ;
+    ;@todo: only play if fast enough
+    cmp.w #400
+    bcc +
+      lda.w #AUDIO.EFFECT.HIT.FLOOR
+      jsl extern.dimension.playSoundEffect
+      jsr lifeform.movement.floorDamage
+      lda.w #SPRITE.explosion.round.PTR
+      ldx.w #0
+      ldy.w #0
+      jsr lifeform.library.sprite
+      bra ++
+
++  
+    ;upwards travel hit: move down one pixel and not get stuck in ceiling
+    beq ++
+      ;only do this in mid-air,not below ground
+      lda lifeform.collision.tile.below
+      cmp.w #LEVEL.COLLISION.MODE.NONE
+      bne ++
+        inc dimension.position.y+1
+
+++
+lifeform.movement.bounce.y:
+  lda dimension.speed.y
+  cmp.w #$8000
+  ror a
+  eor.w #$ffff
+  inc a
+  sta dimension.speed.y
+  stz dimension.acceleration.y
+  rts
+
+
+_checkBoundaryTile.LUT:
+  .dw _checkBoundaryTile.grounded
+  .dw _checkBoundaryTile.airborne
+  .dw _checkBoundaryTile.ethereal
+  .dw _checkBoundaryTile.flying
+  .dw _checkBoundaryTile.dashing
+  .dw _checkBoundaryTile.bouncing
+
+_checkBoundaryTile.bouncing:
+  cmp.w #LEVEL.COLLISION.MODE.VERTICAL_PASS
+  sec
+  beq +
+
+_checkBoundaryTile.dashing:
+_checkBoundaryTile.grounded:
+  AX16
+  cmp.w #LEVEL.COLLISION.MODE.SOLID
+  sec
+  beq +
+
+  cmp.w #LEVEL.COLLISION.MODE.CONVEYOR_LEFT
+  sec
+  beq +
+
+  cmp.w #LEVEL.COLLISION.MODE.CONVEYOR_RIGHT
+  sec
+  beq +
+
+  cmp.w #LEVEL.COLLISION.MODE.BOUNCE
+  sec
+  beq +
+
+    clc
+
++
+  rts
+
+_checkBoundaryTile.airborne:
+  AX16
+  pha
+  lda dimension.speed.y
+  bpl ++
+
+  ;if travelling upwards, only solid block is solid  
+  lda 1,s
+  cmp.w #LEVEL.COLLISION.MODE.SOLID
+  sec
+  beq +
+
+  lda 1,s
+  cmp.w #LEVEL.COLLISION.MODE.BOUNCE
+  sec
+  beq +  
+
+    pla
+    clc
+    rts
+
++
+  pla
+  rts
+
+++
+  ;if travelling downwards all non-air blocks are solid
+  lda 1,s
+  cmp.w #LEVEL.COLLISION.MODE.NONE
+  sec
+  bne +
+
+    pla
+    clc
+    rts
+
++
+  cmp.w #LEVEL.COLLISION.MODE.WALL_JUMP_LEFT
+  sec
+  bne +
+
+    pla
+    clc
+    rts
+
++
+  cmp.w #LEVEL.COLLISION.MODE.WALL_JUMP_RIGHT
+  sec
+  bne +
+
+    pla
+    clc
+    rts
+
++
+  cmp.w #LEVEL.COLLISION.MODE.HAZARD
+  sec
+  bne +
+
+    pla
+    clc
+    rts
+
++
+  cmp.w #LEVEL.COLLISION.MODE.LADDER
+  sec
+  bne +
+
+    pla
+    clc
+    rts
+
++
+  pla
+  rts
+
+
+
+_checkBoundaryTile.ethereal:
+_checkBoundaryTile.flying:
+  AX16
+  clc
+  rts
+
+/**
+* @param a<int, 16bit>  amount of friction.
+*/
+lifeform.movement.applyFriction:
+  AX16
+  pha
+
+  lda dimension.speed.x
+  beq +
+  bmi ++
+    sec
+    sbc 1,s
+    bcs +++
+      lda #0
++++
+    sta dimension.speed.x
+    bra +
+
+++
+    clc
+    adc 1,s
+    bcc +++
+      lda #0
++++
+    sta dimension.speed.x
+
++
+
+  lda dimension.speed.y
+  beq +
+  bmi ++
+    sec
+    sbc 1,s
+    bcs +++
+      lda #0
++++
+    sta dimension.speed.y
+    bra +
+
+++
+    clc
+    adc 1,s
+    bcc +++
+      lda #0
++++
+    sta dimension.speed.y
+
++
+
+  pla
+  rts
+
+_updateTiles:
+  AX16
+  ;get current tile
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  pha
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  pha   
+
+  jsl extern.level.getCollisionTile
+
+  sta lifeform.collision.tile
+
+  pla
+  pla
+
+  ;get current tile below player
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  clc
+  adc.w #TILE.SIZE.Y
+  pha
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  pha   
+
+  jsl extern.level.getCollisionTile
+
+  sta lifeform.collision.tile.below
+
+  pla
+  pla
+  rts
+
+;@see LIFEFORM.CONDITION.*
+_applyTile.current.LUT:
+  .dw _applyTile.current.grounded
+  .dw _applyTile.current.airborne
+  .dw _applyTile.current.ethereal
+  .dw _applyTile.current.flying
+  .dw _applyTile.current.dashing
+  .dw _applyTile.current.bouncing
+
+_applyTile.current.grounded:
+  AX16
+  lda.w #(OBJECT.PROPERTIES.hurts | OBJECT.PROPERTIES.isCollidable)
+  tsb iterator.properties
+
+  lda #LIFEFORM.FRICTION.GROUND
+  sta lifeform.friction
+
+  lda lifeform.collision.tile.below
+  and.w #$ff
+  asl a
+  tax
+  jmp (_tile.grounded.lut,x)
+
+_tile.grounded.lut:
+  .dw _tile.grounded.none
+  .dw _tile.grounded.solid
+  .dw _tile.grounded.vertical_pass
+  .dw _tile.grounded.ladder
+  .dw _tile.grounded.bounce
+  .dw _tile.grounded.hazard
+  .dw _tile.grounded.abyss
+  .dw _tile.grounded.wall_jump_left
+  .dw _tile.grounded.wall_jump_right
+  .dw _tile.grounded.conveyor_left
+  .dw _tile.grounded.conveyor_right
+
+
+_tile.grounded.solid:
+  AX16
+  lda lifeform.collision.tile
+  cmp.w #LEVEL.COLLISION.MODE.HAZARD
+  bne +
+    jmp _floorDamage
+
++
+_tile.grounded.vertical_pass:
+_tile.grounded.ladder:
+_tile.grounded.wall_jump_left:
+_tile.grounded.wall_jump_right:
+  AX16
+  rts
+
+_tile.grounded.abyss:
+  AX16
+  ;transition to dying
+  jmp lifeform.library.die
+
+
+_tile.grounded.hazard:
+  jsr _floorDamage
+
+_tile.grounded.none:
+  AX16
+  ;transition to falling
+  sep #$20
+  lda #LIFEFORM.STATE.FALLING
+  sta lifeform.state
+  rep #$31
+  rts
+
+_floorDamage:
+  AX16
+  lda lifeform.invincibility.timer
+  bne +
+    lda.w #AUDIO.EFFECT.HURT
+    jsl extern.dimension.playSoundEffect
+    sep #$20
+    lda.b #LIFEFORM.INVINCIBILITY.TIMER*4
+    sta lifeform.invincibility.timer
+    rep #$31
+
+    lda lifeform.hitpoints
+    sec
+    sbc.w #10
+    bcc ++
+    sta lifeform.hitpoints
+
+    lda lifeform.berzerk.counter
+    sec
+    sbc.w #80
+    bcc ++
+    sta lifeform.berzerk.counter
+
++
+  rts
+
+++
+  jmp _explodeForReal
+
+_applyTile.current.dashing:
+  AX16
+  lda #LIFEFORM.FRICTION.DASH
+  sta lifeform.friction
+  rts
+
+_tile.grounded.bounce:
+  AX16
+  jmp _doJump
+
+_tile.grounded.conveyor_right:
+  AX16
+  lda dimension.speed.x
+  clc
+  adc.w #LEVEL.CONVEYOR.SPEED
+  sta dimension.speed.x
+  rts
+
+_tile.grounded.conveyor_left:
+  AX16
+  lda dimension.speed.x
+  sec
+  sbc.w #LEVEL.CONVEYOR.SPEED
+  sta dimension.speed.x
+  rts
+
+
+
+_checkClimb:
+  AX16
+  ldx lifeform.actions.trigger
+  lda dimension.speed.y
+  bmi +
+    ;if falling, hold suffices
+    ldx lifeform.actions
+
++  
+  txa
+  bit.w #LIFEFORM.ABILITIES.MOVE.UP
+  beq +
+    lda lifeform.collision.tile
+    cmp.w #LEVEL.COLLISION.MODE.LADDER
+    beq _doClimb
+
+
++  
+  txa
+  bit.w #LIFEFORM.ABILITIES.MOVE.DOWN
+  beq +
+    lda lifeform.collision.tile.below
+    cmp.w #LEVEL.COLLISION.MODE.LADDER
+    beq _doClimb
+
+
++
+  rts
+
+_doClimb:
+  sep #$20
+  lda #LIFEFORM.STATE.CLIMBING
+  sta lifeform.state
+  rep #$31
+  stz dimension.acceleration.y
+  stz dimension.acceleration.x
+  stz dimension.speed.y
+  stz dimension.speed.x
+  rts
+
+_applyGravity:
+  AX16
+  lda dimension.acceleration.y
+  clc
+  adc #GRAVITY.ACCELERATION
+  sta dimension.acceleration.y
+  rts
+
+
+_applyTile.current.airborne:
+  AX16
+  lda.w #(OBJECT.PROPERTIES.hurts | OBJECT.PROPERTIES.isCollidable)
+  tsb iterator.properties
+
+  lda #LIFEFORM.FRICTION.AIR
+  sta lifeform.friction
+  jsr _applyGravity
+
+_checkAirborneCollision: 
+  lda dimension.speed.y
+  bmi +
+    lda lifeform.collision.tile.below
+    cmp.w #LEVEL.COLLISION.MODE.NONE
+    beq +
+    cmp.w #LEVEL.COLLISION.MODE.WALL_JUMP_LEFT
+    beq +
+    cmp.w #LEVEL.COLLISION.MODE.WALL_JUMP_RIGHT
+    beq +
+    cmp.w #LEVEL.COLLISION.MODE.HAZARD
+    beq +
+    cmp.w #LEVEL.COLLISION.MODE.LADDER
+    beq +    
+      lda dimension.position.y+1
+      clc
+      adc dimension.collision.basepoint.y
+      and.w #TILE.SIZE.Y-1
+      cmp.w #TILE.SIZE.Y-1
+      bne +
+
+      stz dimension.acceleration.y
+      stz dimension.speed.y
+
+      lda.w #AUDIO.EFFECT.PUNCH
+      jsl extern.dimension.playSoundEffect
+
+      ;transition to grounded
+      sep #$20
+      ldx.w #LIFEFORM.STATE.WALKING
+
+      lda lifeform.state
+      cmp.b #LIFEFORM.STATE.JUMPSTASHING
+      bne ++
+        ldx.w #LIFEFORM.STATE.STASHING
+
+++      
+      txa
+      sta lifeform.state
+      rep #$31
+      ldx lifeform.callback.touch.floor
+      jsl extern.callback.execute
+      rts
+
++
+  lda lifeform.collision.tile
+  cmp.w #LEVEL.COLLISION.MODE.HAZARD
+  bne +
+    jmp _floorDamage
+
++
+  lda lifeform.collision.tile.below
+  cmp.w #LEVEL.COLLISION.MODE.BOUNCE
+  bne +
+    jsr _doJump
+    lda #LIFEFORM.JUMP.IMPULSE*2
+    sta dimension.speed.y
+
+    lda #LIFEFORM.JUMP.ACCEL*2
+    sta dimension.acceleration.y      
+    rts
+
++
+
+
+  cmp.w #LEVEL.COLLISION.MODE.ABYSS
+  bne +
+    ;transition to dying
+    jmp lifeform.library.die
+
++
+  rts
+
+_applyTile.current.ethereal:
+lda.w #(OBJECT.PROPERTIES.hurts | OBJECT.PROPERTIES.isCollidable)
+trb iterator.properties
+rts
+
+_applyTile.current.flying:
+lda.w #(OBJECT.PROPERTIES.hurts | OBJECT.PROPERTIES.isCollidable)
+tsb iterator.properties
+rts
+
+_applyTile.current.bouncing:
+  AX16
+  lda #LIFEFORM.FRICTION.BOUNCE
+  sta lifeform.friction
+
+  lda dimension.acceleration.y
+  clc
+  adc #GRAVITY.ACCELERATION/8
+  sta dimension.acceleration.y
+  rts
+
+extern.movement.explodeEnemy:
+  AX16
+  jsl extern.movement.bigExplosion
+  jsl extern.lifeform.throw
+  SCRIPT_TRY lifeform.library.kill.MTD iterator.self
+
+  ;shake a bit to make it more epic
+  rtl
+
+_explodeForReal:
+  AX16
+
+  jsl extern.movement.bigExplosion
+
+  jsl extern.lifeform.throw
+
+  ;killcount only applies to humans
+  lda iterator.self
+  and.w #$ff
+  cmp.w #lifeform.block.CLS.PTR
+  beq +
+  cmp.w #lifeform.bomb.CLS.PTR
+  beq +
+  cmp.w #lifeform.bossShot.CLS.PTR
+  beq +  
+  cmp.w #lifeform.cannon.CLS.PTR
+  beq +
+  cmp.w #lifeform.cone.CLS.PTR
+  beq +
+  cmp.w #lifeform.fireball.CLS.PTR
+  beq +
+  cmp.w #lifeform.floating_mine.CLS.PTR
+  beq + 
+  cmp.w #lifeform.spiked_mine.CLS.PTR
+  beq +
+  cmp.w #lifeform.player.CLS.PTR
+  beq +
+  cmp.w #lifeform.sidekick.CLS.PTR
+  beq +
+dasfasdf:
+    lda.w GLOBAL.killCount
+    cmp.w #KILLCOUNT.MAX
+    bcs +
+      inc.w GLOBAL.killCount
+
++  
+  SCRIPT_TRY lifeform.library.kill.MTD iterator.self
+
+  ;shake a bit to make it more epic
+  rts
+
+extern.movement.bigExplosion:
+  AX16
+  lda.w #MATH.000_DEG
+  jsr _explosion
+  lda.w #MATH.045_DEG
+  jsr _explosion
+  lda.w #MATH.135_DEG
+  jsr _explosion
+  lda.w #MATH.180_DEG
+  jsr _explosion
+  lda.w #MATH.270_DEG
+  jsr _explosion
+
+  lda.w #AUDIO.EFFECT.EXPLOSION
+  jsl extern.dimension.playSoundEffect
+  rtl 
+
+
+extern.movement.explodeBomb:
+  AX16
+  ;try to mitigate infinite loop when two bombs explode each other
+  lda iterator.properties
+  bit.w #(OBJECT.PROPERTIES.hurts | OBJECT.PROPERTIES.isCollidable)
+  beq ++
+
+  lda.w #(OBJECT.PROPERTIES.hurts | OBJECT.PROPERTIES.isCollidable)
+  trb iterator.properties
+
+  SCRIPT_JSR iterator.library.reset
+-  
+  lda.w #(OBJECT.PROPERTIES.isLifeform | OBJECT.PROPERTIES.isCollidable)
+  jsr lifeform.library.collisionQuadrupleDiameter.noReset
+  bcc +
+
+    pea LIFEFORM.ATTACK.NORMAL
+
+    jsl extern.lifeform.getTargetDirection
+    pha
+    pea LIFEFORM.BOMB.POWER
+    pei (iterator.self)
+    pei (iterator.self + 2)
+    pea LIFEFORM.COMMAND.ATTACK
+    SCRIPT_CALL lifeform.library.oncommand.MTD iterator.target
+    sta 11,s
+    pla
+    plx
+    plx
+    plx
+    pla
+    pla
+
+    bra -
+
++  
+  jsl _explodeBigFast
+
+
+  SCRIPT_TRY lifeform.library.kill.MTD iterator.self
+
+  ;shake a bit to make it more epic
+++
+  rtl
+
+extern.movement.explodeBigFast:
+_explodeBigFast:
+  AX16
+  lda.w #MATH.000_DEG
+  jsr _explosion
+  lda.w #MATH.090_DEG
+  jsr _explosion
+  lda.w #MATH.180_DEG
+  jsr _explosion
+  lda.w #MATH.270_DEG
+  jsr _explosion
+
+  lda.w #MATH.045_DEG
+  jsr _explosionFast
+  lda.w #MATH.135_DEG
+  jsr _explosionFast
+  lda.w #MATH.225_DEG
+  jsr _explosionFast
+  lda.w #MATH.315_DEG
+  jsr _explosionFast
+
+  lda.w #AUDIO.EFFECT.EXPLOSION
+  jsl extern.dimension.playSoundEffect
+  rtl
+
+_explosion:
+  AX16
+  pea 2
+  pea 3
+  pha
+  lda animation.flags.static
+  ora.w #ANIMATION.FLAGS.CENTER_ON_INIT
+  pha
+
+  pea 3
+  pea SPRITE.explosion.dust.PTR
+  SCRIPT_JSR interface.dimension.getCenterPosition
+  phy
+  phx  
+  SCRIPT_NEW_TRY sprite.directed.CLS.PTR VOID
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+
+  rts
+
+_explosionFast:
+  AX16
+  pea -7
+  pea 10
+  pha
+  lda animation.flags.static
+  ora.w #ANIMATION.FLAGS.CENTER_ON_INIT
+  pha
+
+  pea 3
+  pea SPRITE.explosion.dust.PTR
+  SCRIPT_JSR interface.dimension.getCenterPosition
+  phy
+  phx  
+  SCRIPT_NEW_TRY sprite.directed.CLS.PTR VOID
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+
+  rts
+
+extern.movement.startAnimation:
+  AX16
+  clc
+  adc lifeform.animation.base
+  cmp animation.id
+  beq +
+    jsl extern.Sprite.startAnimation
+
++
+  rtl
+
+_startAnimation:
+  AX16
+  clc
+  adc lifeform.animation.base
+  cmp animation.id
+  beq +
+    jsl extern.Sprite.startAnimation
+
++
+  rts
+
+_climb:
+  AX16
+  lda lifeform.actions
+  and.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT | LIFEFORM.ABILITIES.MOVE.UP | LIFEFORM.ABILITIES.MOVE.DOWN)
+  asl a
+  tax
+  lda lifeform.speed
+  jmp (_moveLUT,x)
+
+_moveSlow:
+  AX16
+  stz dimension.acceleration.x
+
+  lda lifeform.actions
+  and.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT)
+  asl a
+  tax
+  lda lifeform.speed
+  cmp.w #$8000
+  ror a
+  jmp (_moveLUT,x)
+
+_move:
+  AX16
+  stz dimension.acceleration.x
+
+  lda lifeform.actions
+  and.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT)
+  asl a
+  tax
+  lda lifeform.speed
+  jmp (_moveLUT,x)
+
+_moveLUT:
+  .dw _move.none
+  .dw _move.right
+  .dw _move.left
+  .dw _move.invalid
+
+  .dw _move.down
+  .dw _move.right
+  .dw _move.left
+  .dw _move.invalid
+
+  .dw _move.up
+  .dw _move.right
+  .dw _move.left
+  .dw _move.invalid
+
+  .dw _move.invalid
+  .dw _move.invalid
+  .dw _move.invalid
+  .dw _move.invalid    
+
+
+_move.right:
+  sta dimension.speed.x
+
+  sep #$20
+  lda #SPRITE.DIRECTION.RIGHT
+  sta dimension.direction
+  rep #$31
+
+  lda.w #ANIMATION.FLAGS.X_MIRROR
+  bit.b animation.flags.static
+  beq +
+    trb animation.flags.static
+    SCRIPT_JSR sprite.library.resetFrameFlags
+
++
+  sec
+  rts
+
+_move.left:
+  eor.w #$ffff
+  inc a
+  sta dimension.speed.x
+
+++
+
+  sep #$20
+  lda #SPRITE.DIRECTION.LEFT
+  sta dimension.direction
+  rep #$31
+
+  lda.w #ANIMATION.FLAGS.X_MIRROR
+  bit.b animation.flags.static
+  bne +
+    tsb animation.flags.static
+    SCRIPT_JSR sprite.library.resetFrameFlags
+
++
+  sec
+  rts
+
+
+_move.down:
+  sta dimension.speed.y
+
+  sep #$20
+  lda #SPRITE.DIRECTION.DOWN
+  sta dimension.direction
+  rep #$31
+  sec
+  rts
+
+
+_move.up:
+  eor.w #$ffff
+  inc a
+  sta dimension.speed.y
+
+  sep #$20
+  lda #SPRITE.DIRECTION.UP
+  sta dimension.direction
+  rep #$31
+  sec
+  rts
+
+
+_age:
+  php
+  sep #$20
+  lda lifeform.action.age
+  beq +
+    dec lifeform.action.age
+    plp
+    sec
+    rts
+
++
+  plp
+_move.none:
+_move.invalid:
+  clc
+  rts
+
+_checkDuck:
+  AX16
+  pha
+  ;aiming up
+  lda lifeform.actions 
+  ;ducking/aiming down
+  bit.w #LIFEFORM.ABILITIES.MOVE.DOWN
+  beq +
+    ;never move during duck
+    stz dimension.speed.x
+    stz dimension.acceleration.x
+
+    pla
+    inc a
+    rts
+
++  
+  pla
+  rts
+
+
+_stateLUT:
+  .dw _state.walking
+  .dw _state.jumping
+  .dw _state.flipping
+  .dw _state.falling
+  .dw _state.walljumping
+  .dw _state.climbing
+  .dw _state.dashing
+  .dw _state.sliding
+  .dw _state.hurt
+  .dw _state.dying
+  .dw _state.suicide
+  .dw _state.punching
+  .dw _state.jumpkicking
+  .dw _state.uppercut
+  .dw _state.superpunch
+  .dw _state.grabbing
+  .dw _state.jumpgrabbing
+  .dw _state.throwing
+  .dw _state.jumpthrowing
+  .dw _state.stashing
+  .dw _state.jumpstashing
+  .dw _state.grabbed
+  .dw _state.thrown
+  .dw _state.flying
+  .dw _state.customAnimation
+  .dw _state.warping
+
+
+;warp to player
+_state.warping:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.ETHEREAL
+  sta lifeform.condition
+  rep #$31
+
+  lda.w #2
+  sta lifeform.invincibility.timer
+
+  ;acquire player
+  lda iterator.target
+  and.w #$ff
+  cmp.w #lifeform.player.CLS.PTR
+  beq +
+    SCRIPT_JSR iterator.library.reset
+    lda #lifeform.player.CLS.PTR
+    SCRIPT_JSR iterator.library.each.byId
+
++
+  jsl extern.lifeform.getTargetDirection
+  bcc +
+    ldx.w #10
+    SCRIPT_JSR interface.dimension.applyAngle
+
+    SCRIPT_CALL lifeform.library.getCollisionBasepoint.MTD iterator.target
+
+    phx
+    phy
+    lda dimension.position.x+1
+    clc
+    adc dimension.collision.basepoint.x
+    pha
+    lda dimension.position.y+1
+    clc
+    adc dimension.collision.basepoint.y
+    clc
+    adc.w #4  ;aim a little higher than boss, mitigate falling through floor
+    pha
+    jsl extend.math.roughDistance
+    plx
+    plx
+    plx
+    plx
+    cmp.w #$4
+    bcs +
+        ;transition to grounded if current tile free
+        jsr _updateTiles
+        lda lifeform.collision.tile
+        and.w #$ff
+        cmp.w #LEVEL.COLLISION.MODE.NONE
+        beq ++
+
+        cmp.w #LEVEL.COLLISION.MODE.WALL_JUMP_LEFT
+        beq ++
+
+        cmp.w #LEVEL.COLLISION.MODE.WALL_JUMP_RIGHT
+        bne +
+
+++        
+          jsr _doJump
+
+          lda.w #SPRITE.combo_ready.PTR
+          ldx.w #0
+          ldy.w #0
+          jsr lifeform.library.sprite
+
++
+  lda.w #LIFEFORM.SPRITE_ANIMATION.FLIP.RIGHT
+  jmp _startAnimation
+
+
+_state.climbing:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.GROUNDED
+  sta lifeform.condition
+  rep #$31
+
+  stz dimension.speed.y
+  stz dimension.acceleration.y
+
+  lda lifeform.collision.tile
+  cmp.w #LEVEL.COLLISION.MODE.LADDER
+  beq +
+        ;transition to grounded
+        sep #$20
+        lda #LIFEFORM.STATE.FALLING
+        sta lifeform.state
+        rep #$31
+        rts
+
+
+
++
+  lda.w #ANIMATION.FLAGS.IS_PLAYING
+  tsb animation.flags.static
+
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.JUMP
+  beq +
+    jmp _doJump
+
++
+  jsr _climb
+  bcs +
+    jsl extern.Sprite.stopAnimation
+
++  
+  lda #LIFEFORM.SPRITE_ANIMATION.CLIMBING.RIGHT
+  jmp _startAnimation
+
+extern.movement.doJump:
+  jsr _doJump
+  rtl
+
+_doJump:
+  AX16
+  lda lifeform.state
+  and.w #$ff
+  cmp.w #LIFEFORM.STATE.DYING
+  bne +
+  cmp.w #LIFEFORM.STATE.SUICIDE
+  beq +  
+    rts
+
++
+  sep #$20
+  lda #LIFEFORM.STATE.JUMPING
+  sta lifeform.state
+
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+
+  lda #LIFEFORM.JUMP.AGE
+  sta lifeform.action.age
+  rep #$31
+
+  lda.w #AUDIO.EFFECT.DASH
+  jsl extern.dimension.playSoundEffect
+
+  lda #LIFEFORM.JUMP.IMPULSE
+  sta dimension.speed.y
+
+  lda #LIFEFORM.JUMP.ACCEL
+  sta dimension.acceleration.y  
+
+  lda #LIFEFORM.FRICTION.AIR
+  sta lifeform.friction
+    
+  ;overcome ground traction
+  dec dimension.position.y+1
+
+  lda.w #SPRITE.dust.PTR
+  ldx.w #0
+  ldy.w #10
+  jmp lifeform.library.sprite
+
+_tryJumpFall:
+  AX16
+  lda lifeform.actions
+  bit.w #LIFEFORM.ABILITIES.MOVE.DOWN
+  beq ++
+
+  lda lifeform.collision.tile.below
+  cmp.w #LEVEL.COLLISION.MODE.VERTICAL_PASS
+  bne +
+    ;fall down to tile below
+    lda dimension.position.y+1
+    clc
+    adc.w #9
+    sta dimension.position.y+1
+
+    stz dimension.speed.y
+    stz dimension.acceleration.y
+    sep #$20
+    lda #LIFEFORM.STATE.FALLING
+    sta lifeform.state
+    rep #$31
+    sec
+    rts
+
++
+  ;hold down + jump trigger: shortcut to slide if not on vertical pass
+  sep #$20
+  lda #LIFEFORM.STATE.SLIDING
+  sta lifeform.state
+
+  lda #LIFEFORM.CONDITION.DASHING
+  sta lifeform.condition
+
+  lda #LIFEFORM.DASH.AGE
+  sta lifeform.action.age
+
+  rep #$31
+
+  stz dimension.speed.x
+  stz dimension.acceleration.x
+  
+  lda.w #LIFEFORM.MAX_HITS.SLIDE
+  sta.b lifeform.hitcount
+
+  ldx #LIFEFORM.DASH.IMPULSE
+  ldy #LIFEFORM.DASH.ACCEL
+  jsr lifeform.movement.dashAccel  
+  sec
+  rts
+
+++
+  clc
+  rts  
+
+_doWallJump:
+  AX16
+  sep #$20
+  lda #LIFEFORM.STATE.WALLJUMPING
+  sta lifeform.state
+
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+
+  lda #LIFEFORM.WALLJUMP.AGE
+  sta lifeform.action.age
+  rep #$31
+
+  lda.w #LIFEFORM.SKILL.FLIP
+  tsb lifeform.skills
+  
+  lda.w #AUDIO.EFFECT.DASH
+  jsl extern.dimension.playSoundEffect
+
+  lda dimension.position.y+1
+  sec
+  sbc.w #6  ;never move more than a full tile
+  sta dimension.position.y+1
+
+  lda #LIFEFORM.JUMP.IMPULSE*11
+  sta dimension.speed.y
+
+  lda #LIFEFORM.JUMP.ACCEL*11
+  sta dimension.acceleration.y  
+
+  lda dimension.direction    
+  and.w #$ff
+  cmp.w #SPRITE.DIRECTION.RIGHT
+  beq +
+    lda #LIFEFORM.WALLJUMP.IMPULSE*5
+    sta dimension.speed.x
+
+    lda #LIFEFORM.WALLJUMP.ACCEL*5
+    sta dimension.acceleration.x
+    bra ++
+
++
+    lda #-LIFEFORM.WALLJUMP.IMPULSE*5
+    sta dimension.speed.x
+
+    lda #-LIFEFORM.WALLJUMP.ACCEL*5
+    sta dimension.acceleration.x
+
+
+
+++
+  ;overcome ground traction
+  dec dimension.position.y+1
+
+  lda.w #SPRITE.dust.PTR
+  ldx.w #0
+  ldy.w #10
+  jmp lifeform.library.sprite
+
+
+_doUppercut:
+  AX16
+  jsl extern.lifeform.throw
+
+  lda.w #AUDIO.EFFECT.PUNCH
+  jsl extern.dimension.playSoundEffect
+
+  sep #$20
+  lda #LIFEFORM.STATE.UPPERCUT
+  sta lifeform.state
+
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+
+  lda #LIFEFORM.UPPERCUT.AGE
+  sta lifeform.action.age
+  rep #$31
+
+  lda.w #LIFEFORM.MAX_HITS.UPPERCUT
+  sta.b lifeform.hitcount
+
+  lda #LIFEFORM.UPPERCUT.IMPULSE
+  sta dimension.speed.y
+
+  lda #LIFEFORM.UPPERCUT.ACCEL
+  sta dimension.acceleration.y  
+  ;overcome ground traction
+  dec dimension.position.y+1
+  rts
+
+lifeform.movement.dashAccel:
+  AX16
+  lda dimension.direction    
+  and.w #$ff
+  cmp.w #SPRITE.DIRECTION.RIGHT
+  beq +++
+    txa
+    eor.w #$ffff
+    inc a
+    tax
+    tya
+    eor.w #$ffff
+    inc a
+    tay    
+
+
++++
+  stx dimension.speed.x
+  sty dimension.acceleration.x
+  rts
+
+
+_state.walking:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.GROUNDED
+  sta lifeform.condition
+  rep #$31
+
+  lda.w #LIFEFORM.SKILL.FLIP
+  tsb lifeform.skills
+
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.JUMP
+  beq +
+    jsr _tryJumpFall
+    bcs ++
+      jmp _doJump
+
+++
+    rts
+
++  
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.DASH
+  beq +
+    sep #$20
+    lda #LIFEFORM.STATE.DASHING
+    sta lifeform.state
+
+    lda #LIFEFORM.CONDITION.DASHING
+    sta lifeform.condition
+
+    lda #LIFEFORM.DASH.AGE
+    sta lifeform.action.age
+    rep #$31
+
+    lda.w #LIFEFORM.MAX_HITS.DASH
+    sta.b lifeform.hitcount
+
+
+    lda.w #AUDIO.EFFECT.HIT.DASH
+    jsl extern.dimension.playSoundEffect
+
+    ldx #LIFEFORM.DASH.IMPULSE
+    ldy #LIFEFORM.DASH.ACCEL*2
+    jsr lifeform.movement.dashAccel
+    jmp ++
+
++
+
+  ;punching
+  bit.w #LIFEFORM.ABILITIES.ATTACK
+  beq +
+    lda lifeform.actions
+    bit.w #LIFEFORM.ABILITIES.MOVE.UP
+    bne +++
+      lda lifeform.combo.counter
+      and.w #$ff
+      cmp.w #LIFEFORM.COMBO.SATURATE
+      bcc ++++
+        jsl extern.movement.doKnockOut
+        rts
+        
+++++
+
+      ;punch
+      sep #$20
+      lda #LIFEFORM.STATE.PUNCHING
+      sta lifeform.state
+
+      lda #LIFEFORM.PUNCH.AGE
+      sta lifeform.action.age
+      rep #$31
+
+      lda.w #LIFEFORM.MAX_HITS.PUNCH
+      sta.b lifeform.hitcount
+
+      lda.w #AUDIO.EFFECT.PUNCH
+      jsl extern.dimension.playSoundEffect
+
+      jmp ++
+
++++
+      ;uppercut
+      jsr _doUppercut
+      jmp ++
++
+
+  ;grabbing/throwing
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.GRABTHROW
+  beq +
+    ldx.w #lifeform.grabbed.object
+    SCRIPT_JSR core.object.exists
+    bcs +++
+      ;grab
+      sep #$20
+      lda #LIFEFORM.STATE.GRABBING
+      sta lifeform.state
+
+      lda #LIFEFORM.GRAB.AGE
+      sta lifeform.action.age
+      rep #$31
+      bra ++
+
++++
+      ;throw
+      sep #$20
+      lda #LIFEFORM.STATE.THROWING
+      sta lifeform.state
+
+      lda #LIFEFORM.THROW.AGE
+      sta lifeform.action.age
+      rep #$31
+      jsl extern.lifeform.throw
+      bra ++
+
++
+  jsr _checkClimb
+
+  ;dont move when ducking
+  lda lifeform.actions 
+  bit.w #LIFEFORM.ABILITIES.MOVE.DOWN
+  bne ++
+    jsr _move
+
+++  
+  lda #LIFEFORM.SPRITE_ANIMATION.RUNNING.RIGHT
+  bcs +
+    lda #LIFEFORM.SPRITE_ANIMATION.IDLE.RIGHT
+
++
+
+  jsr _checkDuck
+  jmp _startAnimation
+
+extern.movement.doKnockOut:
+  AX16
+  ;knockout move
+  sep #$20
+  stz lifeform.combo.counter
+  stz lifeform.combo.timer
+  lda #LIFEFORM.STATE.SUPERPUNCH
+  sta lifeform.state
+
+  lda #LIFEFORM.CONDITION.DASHING
+  sta lifeform.condition
+
+  ;enable combo counter increase
+  lda.b #$80
+  trb lifeform.combo.counter
+
+  lda #LIFEFORM.SUPERPUNCH.AGE
+  sta lifeform.action.age
+  rep #$31
+
+  lda.w #LIFEFORM.MAX_HITS.KNOCKOUT
+  sta.b lifeform.hitcount
+
+  lda iterator.self
+  and.w #$ff
+  cmp.w #lifeform.player.CLS.PTR
+  bne +
+    lda.w #AUDIO.EFFECT.EYA
+    jsl extern.dimension.playSoundEffect
+
++
+  lda iterator.self
+  and.w #$ff
+  cmp.w #lifeform.sidekick.CLS.PTR
+  bne +
+    lda.w #AUDIO.EFFECT.EYA_HIGH
+    jsl extern.dimension.playSoundEffect
+
++
+  lda.w #SPRITE.slash1.PTR
+  ldx.w #0
+  ldy.w #0
+  jsr lifeform.library.sprite
+
+
+  ldx #LIFEFORM.SUPERPUNCH.IMPULSE
+  ldy #LIFEFORM.SUPERPUNCH.ACCEL
+
+  lda dimension.direction    
+  and.w #$ff
+  cmp.w #SPRITE.DIRECTION.RIGHT
+  beq +
+    ldx #-LIFEFORM.SUPERPUNCH.IMPULSE
+    ldy #-LIFEFORM.SUPERPUNCH.ACCEL
+
+
++
+  stx dimension.speed.x
+  sty dimension.acceleration.x
+  rtl
+
+_state.flying:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.FLYING
+  sta lifeform.condition
+  rep #$31
+
+  jsr _move
+
+  lda #LIFEFORM.SPRITE_ANIMATION.RUNNING.RIGHT
+  bcs +
+    lda #LIFEFORM.SPRITE_ANIMATION.IDLE.RIGHT
+
++
+
+  jmp _startAnimation
+
+_state.jumping:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+  rep #$31
+
+  jsr _age
+  bcc +
+    lda lifeform.actions
+    bit.w #LIFEFORM.ABILITIES.JUMP
+    beq +
+      lda #LIFEFORM.JUMP.SUSTAIN
+      clc
+      adc dimension.acceleration.y
+      sta dimension.acceleration.y
+      bra ++
+
++
+
+++
+  jsr _checkFlipJump
+
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.ATTACK
+  beq +
+    lda lifeform.actions
+    bit.w #LIFEFORM.ABILITIES.MOVE.UP
+    beq +
+      jsr _doUppercut    
+      bra ++
++
+  jsr _checkJumpKick
+  
+++  
+
+  lda dimension.speed.y
+  bmi +
+    sep #$20
+    lda #LIFEFORM.STATE.FALLING
+    sta lifeform.state
+    rep #$31
+
++
+  ;grabbing/throwing
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.GRABTHROW
+  beq +
+    ldx.w #lifeform.grabbed.object
+    SCRIPT_JSR core.object.exists
+    bcs +++
+      ;grab
+      sep #$20
+      lda #LIFEFORM.STATE.JUMPGRABBING
+      sta lifeform.state
+
+      lda #LIFEFORM.GRAB.AGE
+      sta lifeform.action.age
+      rep #$31
+      bra ++
+
++++
+      ;throw
+      sep #$20
+      lda #LIFEFORM.STATE.JUMPTHROWING
+      sta lifeform.state
+
+      lda #LIFEFORM.THROW.AGE
+      sta lifeform.action.age
+      rep #$31
+      jsl extern.lifeform.throw
+      bra ++
+
++
+  jsr _checkClimb
+
+  jsr _move
+++  
+  lda #LIFEFORM.SPRITE_ANIMATION.JUMPING.RIGHT
+  jmp _startAnimation
+
+_state.walljumping:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+  rep #$31
+
+  lda.w #ANIMATION.FLAGS.X_MIRROR
+  trb animation.flags.static
+  lda dimension.speed.x
+  bpl +
+    lda.w #ANIMATION.FLAGS.X_MIRROR
+    tsb animation.flags.static
+
++  
+
+  jsr _checkFlipJump
+  jsr _checkJumpKick
+
+  lda dimension.speed.y
+  bmi +
+    sep #$20
+    lda #LIFEFORM.STATE.FALLING
+    sta lifeform.state
+    rep #$31
+
++
+  ;grabbing/throwing
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.GRABTHROW
+  beq +
+    ldx.w #lifeform.grabbed.object
+    SCRIPT_JSR core.object.exists
+    bcs +++
+      ;grab
+      sep #$20
+      lda #LIFEFORM.STATE.JUMPGRABBING
+      sta lifeform.state
+
+      lda #LIFEFORM.GRAB.AGE
+      sta lifeform.action.age
+      rep #$31
+      bra ++
+
++++
+      ;throw
+      sep #$20
+      lda #LIFEFORM.STATE.JUMPTHROWING
+      sta lifeform.state
+
+      lda #LIFEFORM.THROW.AGE
+      sta lifeform.action.age
+      rep #$31
+      jsl extern.lifeform.throw
+      bra ++
+
++
+  jsr _checkClimb
+
+  jsr _age
+  bcs ++
+    jsr _move
+
+++  
+  lda #LIFEFORM.SPRITE_ANIMATION.JUMPING.RIGHT
+  jmp _startAnimation
+
+_state.flipping:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+  rep #$31
+
+  lda.w #LIFEFORM.SKILL.FLIP
+  trb lifeform.skills
+
+  lda dimension.speed.y
+  bmi +
+    sep #$20
+    lda #LIFEFORM.STATE.FALLING
+    sta lifeform.state
+    rep #$31
+
++
+  ;only throw, not grab while flipping
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.GRABTHROW
+  beq +
+    ldx.w #lifeform.grabbed.object
+    SCRIPT_JSR core.object.exists
+    bcc +
+      ;throw
+      sep #$20
+      lda #LIFEFORM.STATE.JUMPTHROWING
+      sta lifeform.state
+
+      lda #LIFEFORM.THROW.AGE
+      sta lifeform.action.age
+      rep #$31
+      jsl extern.lifeform.throw
+      bra ++
+
++
+  jsr _move
+  jsr _checkClimb
+  
+++
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.ATTACK
+  beq +
+    lda lifeform.actions
+    bit.w #LIFEFORM.ABILITIES.MOVE.UP
+    beq +
+      jsr _doUppercut    
+      bra ++
++
+  jsr _checkJumpKick
+
+++
+  lda #LIFEFORM.SPRITE_ANIMATION.FLIP.RIGHT
+  jmp _startAnimation
+
+_checkFlipJump:
+  AX16
+  lda lifeform.skills
+  bit.w #LIFEFORM.SKILL.FLIP
+  beq +
+    lda lifeform.actions.trigger
+    bit.w #LIFEFORM.ABILITIES.JUMP
+    beq +
+      sep #$20
+      lda #LIFEFORM.STATE.FLIPPING
+      sta lifeform.state
+      rep #$31
+
+      lda.w #AUDIO.EFFECT.DASH
+      jsl extern.dimension.playSoundEffect
+
+      lda #LIFEFORM.JUMP.IMPULSE
+      sta dimension.speed.y
+
+      lda #LIFEFORM.FLIP.ACCEL
+      sta dimension.acceleration.y
+
++
+  rts
+
+_checkJumpKick:
+  AX16
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.ATTACK
+  beq +
+    sep #$20
+    lda #LIFEFORM.STATE.JUMPKICKING
+    sta lifeform.state
+
+    lda #LIFEFORM.JUMPKICK.AGE
+    sta lifeform.action.age    
+
+    rep #$31
+
+    lda.w #LIFEFORM.MAX_HITS.KICK
+    sta.b lifeform.hitcount
+
++
+  rts
+
+_state.falling:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+  rep #$31
+
+  jsr _checkFlipJump
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.ATTACK
+  beq +
+    lda lifeform.actions
+    bit.w #LIFEFORM.ABILITIES.MOVE.UP
+    beq +
+      jsr _doUppercut    
+      bra ++
++
+  jsr _checkJumpKick
+
+++
+  ;grabbing/throwing
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.GRABTHROW
+  beq +
+    ldx.w #lifeform.grabbed.object
+    SCRIPT_JSR core.object.exists
+    bcs +++
+      ;grab
+      sep #$20
+      lda #LIFEFORM.STATE.GRABBING
+      sta lifeform.state
+
+      lda #LIFEFORM.GRAB.AGE
+      sta lifeform.action.age
+      rep #$31
+      bra ++
+
++++
+      ;throw
+      sep #$20
+      lda #LIFEFORM.STATE.THROWING
+      sta lifeform.state
+
+      lda #LIFEFORM.THROW.AGE
+      sta lifeform.action.age
+      rep #$31
+      jsl extern.lifeform.throw
+      bra ++
+
++
+  jsr _checkClimb
+  jsr _move
+
+++
+  ldx #LIFEFORM.SPRITE_ANIMATION.FALLING.RIGHT
+  lda lifeform.collision.tile.below
+  cmp.w #LEVEL.COLLISION.MODE.WALL_JUMP_LEFT
+  bne +
+    lda lifeform.actions
+    bit.w #LIFEFORM.ABILITIES.MOVE.LEFT
+    beq +
+      lda dimension.position.x+1
+      and.w #TILE.SIZE.X-1
+      bne +
+        jsr _slide
+        stz dimension.acceleration.y
+        lda.w #WALLHUG.SPEED.Y
+        sta dimension.speed.y
+        lda lifeform.actions.trigger
+        bit.w #LIFEFORM.ABILITIES.JUMP
+        beq ++
+          jsr _doWallJump
+
+++
+        ldx #LIFEFORM.SPRITE_ANIMATION.WALLHUGGING.RIGHT
+
++
+ lda lifeform.collision.tile.below
+  cmp.w #LEVEL.COLLISION.MODE.WALL_JUMP_RIGHT
+  bne +
+    lda lifeform.actions
+    bit.w #LIFEFORM.ABILITIES.MOVE.RIGHT
+    beq +
+      lda dimension.position.x+1
+      and.w #TILE.SIZE.X-1
+      cmp.w #TILE.SIZE.X-1
+      bne +
+        jsr _slide
+        stz dimension.acceleration.y
+        lda.w #WALLHUG.SPEED.Y
+        sta dimension.speed.y
+        lda lifeform.actions.trigger
+        bit.w #LIFEFORM.ABILITIES.JUMP
+        beq ++
+          jsr _doWallJump
+
+++
+        ldx #LIFEFORM.SPRITE_ANIMATION.WALLHUGGING.RIGHT
+
++
+  txa
+  jmp _startAnimation
+
+
+_state.hurt:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.BOUNCING
+  sta lifeform.condition
+  rep #$31
+
+  lda.w #(OBJECT.PROPERTIES.hurts | OBJECT.PROPERTIES.isCollidable)
+  tsb iterator.properties
+
+  jsr _age
+  bcc ++
+    lda dimension.speed.x
+    ora dimension.speed.y
+    bne +
+
+      ;bouncing, but not dead yet. return to falling
+++  
+      lda lifeform.hitpoints
+      bne ++
+        jmp _explodeForReal
+
+++      
+      sep #$20
+      lda.b #LIFEFORM.STATE.FALLING
+      sta lifeform.state
+      rep #$31
+
++
+  jsr _smoke
+  lda #LIFEFORM.SPRITE_ANIMATION.HURT.RIGHT
+  jmp _startAnimation
+
+
+_explode:
+  AX16
+  lda animation.timer
+  bit.w #$1f
+  bne +
+    lda.w #AUDIO.EFFECT.EXPLOSION
+    jsl extern.dimension.playSoundEffect
+
+    lda.w #SPRITE.explosion.dust.PTR
+    ldx.w #0
+    ldy.w #0
+    jmp lifeform.library.sprite
+
+
++
+  rts
+
+
+_smoke:
+  AX16
+  lda animation.timer
+  bit.w #$1f
+  bne +
+    lda.w #SPRITE.smoke.PTR
+    ldx.w #0
+    ldy.w #0
+    jmp lifeform.library.sprite
+
+
++
+  rts
+
+_slide:
+  AX16
+  lda animation.timer
+  bit.w #$f
+  bne +
+    lda.w #SPRITE.dust.PTR
+    ldx.w #0
+    ldy.w #0
+    jmp lifeform.library.sprite
+
+
++
+  rts
+
+_state.thrown:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.BOUNCING
+  sta lifeform.condition
+  rep #$31
+  lda lifeform.hitcount
+  beq +  
+    jsr lifeform.library.attack.thrown
+
++    
+  lda.w #(OBJECT.PROPERTIES.hurts | OBJECT.PROPERTIES.isCollidable)
+  tsb iterator.properties
+
+  jsr _age
+  bcc ++
+    lda dimension.speed.x
+    ora dimension.speed.y
+    bne +
+
+      ;bouncing, but not dead yet. return to falling
+++
+      lda lifeform.hitpoints
+      bne ++
+        jmp _explodeForReal
+        
+++
+      sep #$20
+      lda.b #LIFEFORM.STATE.FALLING
+      sta lifeform.state
+      rep #$31
+
++
+  jsr _smoke
+  lda #LIFEFORM.SPRITE_ANIMATION.GRABBED.RIGHT
+  jmp _startAnimation
+
+_state.jumpkicking:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+  rep #$31
+
+  jsr lifeform.library.attack.kick
+
+  lda lifeform.hitcount
+  beq ++
+
+  jsr _age
+  bcs +
+++
+    sep #$20
+    lda #LIFEFORM.STATE.FALLING
+    sta lifeform.state
+    rep #$31
+
++
+  jsr _move
+
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.ATTACK
+  beq +
+    lda lifeform.combo.counter
+    and.w #$ff
+    cmp.w #LIFEFORM.COMBO.SATURATE
+    bcc +
+      jsl extern.movement.doKnockOut
+      rts
+        
++  
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.ATTACK
+  beq +
+    lda lifeform.actions
+    bit.w #LIFEFORM.ABILITIES.MOVE.UP
+    beq +
+      jsr _doUppercut    
+      bra ++
++
+  jsr _checkJumpKick
+  
+++  
+
+  lda #LIFEFORM.SPRITE_ANIMATION.JUMPKICK.RIGHT
+  jmp _startAnimation
+
+_state.dashing:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.DASHING
+  sta lifeform.condition
+  rep #$31
+
+
+  lda lifeform.action.age
+  and.w #$ff
+  cmp.w #LIFEFORM.PUNCH.ATTACK_DELAY
+  bcs +
+    jsr lifeform.library.attack.punch
+
++
+
+  ;stop moving after some time to discourage constant dashing
+  lda lifeform.action.age
+  and.w #$ff
+  cmp.w #LIFEFORM.DASH.AGE/1.5
+  bcs +
+    stz dimension.speed.x
+
++  
+  ;jump is not speed-sanctioned. Maybe this could be absued to move faster than normal travel speed with frame-exact timing. In normal gameplay, it seems to be slower, though (because of missed jumps/dashes, which slow player down).
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.JUMP
+  beq +
+    jmp _doJump
+
++
+
+  lda lifeform.actions
+  bit.w #LIFEFORM.ABILITIES.MOVE.DOWN
+  beq +
+    sep #$20
+
+    lda #LIFEFORM.STATE.SLIDING
+    sta lifeform.state
+    rep #$31
+
+    lda.w #LIFEFORM.MAX_HITS.SLIDE
+    sta.b lifeform.hitcount
+    ldx #LIFEFORM.DASH.IMPULSE
+    ldy #LIFEFORM.DASH.ACCEL
+    jsr lifeform.movement.dashAccel
+
+
++
+  jsr _slide
+
+  jsr _age
+  bcs +
+    sep #$20
+    lda #LIFEFORM.STATE.WALKING
+    sta lifeform.state
+    rep #$31
+
++
+  lda.w #LIFEFORM.SPRITE_ANIMATION.DASHING.RIGHT
+  jmp _startAnimation
+
+_state.sliding:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.DASHING
+  sta lifeform.condition
+  rep #$31
+
+  jsr lifeform.library.attack.slide
+
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.JUMP
+  beq +
+    jmp _doJump
+
++
+  lda lifeform.hitcount
+  beq ++
+
+  jsr _slide
+  lda dimension.speed.x
+  bne +
+++
+    stz dimension.speed.x
+    stz dimension.acceleration.x
+
+    sep #$20
+    lda #LIFEFORM.STATE.WALKING
+    sta lifeform.state
+    rep #$31
+
++  
+  lda.w #LIFEFORM.SPRITE_ANIMATION.SLIDING.RIGHT
+  jmp _startAnimation
+
+_state.dying:
+  AX16
+  ;callbacks could change state and mess up dying sequence, disable
+  lda #movement.void.CLB
+  sta lifeform.callback.touch.wall
+  sta lifeform.callback.touch.floor
+  sta lifeform.callback.touch.lifeform
+
+  sep #$20
+  lda #LIFEFORM.CONDITION.BOUNCING
+  sta lifeform.condition
+  rep #$31
+
+  lda.w #OBJECT.PROPERTIES.hurts
+  trb iterator.properties
+
+  jsr _age
+  bcc ++
+    lda dimension.speed.x
+    ora dimension.speed.y
+    bne +
+
+++
+        jmp _explodeForReal
+
++
+
+  jsr _explode
+  lda #LIFEFORM.SPRITE_ANIMATION.DIE.RIGHT
+  jmp _startAnimation
+
+_state.suicide:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.BOUNCING
+  sta lifeform.condition
+  rep #$31
+
+  lda.w #(OBJECT.PROPERTIES.hurts | OBJECT.PROPERTIES.isCollidable)
+  trb iterator.properties
+
+  jsr _age
+  bcc ++
+
+  lda dimension.speed.x
+  ora dimension.speed.y
+  ora dimension.acceleration.y
+  bne +
+++
+    lda iterator.self
+    and.w #$ff
+    cmp.w #lifeform.player.CLS.PTR
+    bne ++
+        lda.w #AUDIO.EFFECT.DEATH
+        jsl extern.dimension.playSoundEffect
+        SCRIPT_NEW Script.CLS.PTR VOID bossSuicide
+
+++ 
+    lda iterator.self
+    and.w #$ff
+    cmp.w #lifeform.sidekick.CLS.PTR
+    bne ++
+        lda.w #AUDIO.EFFECT.DEATH_HIGH
+        jsl extern.dimension.playSoundEffect
+
+++ 
+    jmp _explodeForReal
+
++
+  ;still falling
+  jsr _explode
+  lda #LIFEFORM.SPRITE_ANIMATION.HURT.RIGHT
+  jmp _startAnimation
+
+_state.punching:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.GROUNDED
+  sta lifeform.condition
+  rep #$31
+
+  lda lifeform.hitcount
+  beq ++
+  
+  jsr _age
+  bcs +
+++
+    sep #$20
+    lda #LIFEFORM.STATE.WALKING
+    sta lifeform.state
+    rep #$31
+
++
+
+  jsr _moveSlow
+
+  lda lifeform.action.age
+  and.w #$ff
+  cmp.w #LIFEFORM.PUNCH.ATTACK_DELAY
+  bcs +
+    jsr lifeform.library.attack.punch
+
++
+
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.ATTACK
+  beq +
+    lda lifeform.combo.counter
+    and.w #$ff
+    cmp.w #LIFEFORM.COMBO.SATURATE
+    bcc +
+      jsl extern.movement.doKnockOut
+      rts
+        
++
+  SCRIPT_JSR core.random.get
+  and.w #1
+  clc
+  adc.w #LIFEFORM.SPRITE_ANIMATION.PUNCH1.RIGHT
+  jmp _startAnimation
+
+_state.uppercut:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+  rep #$31
+
+  ;invincible while uppercutting, but only of hit already landed (prevent player from getting hit)
+  lda lifeform.hitcount
+  cmp #LIFEFORM.MAX_HITS.UPPERCUT
+  beq +
+    inc lifeform.invincibility.invisible.timer
+
++    
+  jsr _age
+  bcs +
+    sep #$20
+    lda #LIFEFORM.STATE.FALLING
+    sta lifeform.state
+    rep #$31
+
++
+  jsr _moveSlow
+
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.ATTACK
+  beq +
+    lda lifeform.combo.counter
+    and.w #$ff
+    cmp.w #LIFEFORM.COMBO.SATURATE
+    bcc +
+      jsl extern.movement.doKnockOut
+      rts
+        
++  
+  jsr _checkClimb
+
+  lda lifeform.hitcount
+  beq +
+    lda lifeform.action.age
+    and.w #$ff
+    cmp.w #LIFEFORM.UPPERCUT.ATTACK_DELAY
+    bcs +
+      jsr lifeform.library.attack.uppercut
+
++
+  lda.w #LIFEFORM.SPRITE_ANIMATION.UPPERCUT.RIGHT
+  jmp _startAnimation
+
+_state.superpunch:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.DASHING
+  sta lifeform.condition
+  rep #$31
+
+
+  lda lifeform.action.age
+  and.w #$ff
+  cmp.w #LIFEFORM.SUPERPUNCH.ATTACK_DELAY
+  bcs +
+    jsr lifeform.library.attack.superpunch
+
++
+  lda lifeform.actions.trigger
+  bit.w #LIFEFORM.ABILITIES.JUMP
+  beq +
+    jmp _doJump
+
++
+  jsr _slide
+
+  lda lifeform.hitcount
+  beq ++
+
+  jsr _age
+  bcs +
+++  
+    sep #$20
+    lda #LIFEFORM.STATE.WALKING
+    sta lifeform.state
+    rep #$31
+
++
+  lda.w #LIFEFORM.SPRITE_ANIMATION.PUNCH3.RIGHT
+  jmp _startAnimation
+
+
+_tryGrab:
+  AX16
+  rts
+
+_state.grabbing:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.GROUNDED
+  sta lifeform.condition
+  rep #$31
+  
+  jsr _age
+  bcs +
+    sep #$20
+    lda #LIFEFORM.STATE.WALKING
+    sta lifeform.state
+    rep #$31
+
++
+  jsr lifeform.library.grab
+
+  lda.w #LIFEFORM.SPRITE_ANIMATION.GRAB.RIGHT
+  jmp _startAnimation
+
+_state.jumpgrabbing:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+  rep #$31
+  
+  jsr _age
+  bcs +
+    sep #$20
+    lda #LIFEFORM.STATE.FALLING
+    sta lifeform.state
+    rep #$31
+
++
+  jsr lifeform.library.grab
+
+  lda.w #LIFEFORM.SPRITE_ANIMATION.GRAB.RIGHT
+  jmp _startAnimation
+
+_state.throwing:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.GROUNDED
+  sta lifeform.condition
+  rep #$31
+  
+  jsr _age
+  bcs +
+    sep #$20
+    lda #LIFEFORM.STATE.WALKING
+    sta lifeform.state
+    rep #$31
+
++
+  lda.w #LIFEFORM.SPRITE_ANIMATION.THROW.RIGHT
+  jmp _startAnimation
+
+_state.jumpthrowing:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+  rep #$31
+  
+  jsr _age
+  bcs +
+    sep #$20
+    lda #LIFEFORM.STATE.FALLING
+    sta lifeform.state
+    rep #$31
+
++
+  lda.w #LIFEFORM.SPRITE_ANIMATION.THROW.RIGHT
+  jmp _startAnimation
+
+_state.grabbed:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.ETHEREAL
+  sta lifeform.condition
+  rep #$31
+
+  stz dimension.speed.x
+  stz dimension.speed.y
+  stz dimension.acceleration.x
+  stz dimension.acceleration.y
+  
+  lda.w #OBJECT.PROPERTIES.isGrabbed
+  tsb iterator.properties
+
+  lda.w #OBJECT.PROPERTIES.isLevelMember
+  trb iterator.properties
+
+  lda.w #LIFEFORM.SPRITE_ANIMATION.GRABBED.RIGHT
+  jmp _startAnimation
+
+_state.stashing:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.GROUNDED
+  sta lifeform.condition
+  rep #$31
+ 
+  lda lifeform.carry.y
+  cmp lifeform.carry.height
+  beq +
+    dec lifeform.carry.y
+
++
+  lda lifeform.carry.x
+  cmp.w #LIFEFORM.CARRY.END.X
+  beq +
+    dec lifeform.carry.x
+
++
+  lda lifeform.carry.x
+  cmp.w #LIFEFORM.CARRY.END.X
+  bne +
+  lda lifeform.carry.y
+  cmp lifeform.carry.height
+  bne +
+    sep #$20
+    lda #LIFEFORM.STATE.WALKING
+    sta lifeform.state
+    rep #$31
+
++
+  lda.w #LIFEFORM.SPRITE_ANIMATION.STASH.RIGHT
+  jmp _startAnimation
+
+_state.jumpstashing:
+  AX16
+  sep #$20
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+  rep #$31
+ 
+  lda lifeform.carry.y
+  cmp lifeform.carry.height
+  beq +
+    dec lifeform.carry.y
+
++
+  lda lifeform.carry.x
+  cmp.w #LIFEFORM.CARRY.END.X
+  beq +
+    dec lifeform.carry.x
+
++
+  lda lifeform.carry.x
+  cmp.w #LIFEFORM.CARRY.END.X
+  bne +
+  lda lifeform.carry.y
+  cmp lifeform.carry.height
+  bne +
+    sep #$20
+    lda #LIFEFORM.STATE.FALLING
+    sta lifeform.state
+    rep #$31
+
++
+  lda.w #LIFEFORM.SPRITE_ANIMATION.STASH.RIGHT
+  jmp _startAnimation
+
+_state.customAnimation:
+  sep #$20
+  lda #LIFEFORM.CONDITION.ETHEREAL
+  sta lifeform.condition
+  rep #$31
+  
+  jsr _age
+  bcs +
+    sep #$20
+    lda #LIFEFORM.STATE.WALKING
+    sta lifeform.state
+    rep #$31
+
++
+  rts
+
+
+lifeform.movement.shiftToBasepoint:
+  AX16
+  lda dimension.position.x+1
+  sec
+  sbc dimension.collision.basepoint.x
+  sta dimension.position.x+1
+  lda dimension.position.y+1
+  sec
+  sbc dimension.collision.basepoint.y
+  sta dimension.position.y+1
+  rts
+
+;floor damages, but never kills (else player wouldnt get berzerk bonus)
+lifeform.movement.floorDamage:
+  AX16
+  lda lifeform.hitpoints
+  beq +
+  cmp.w #1
+  beq +
+    dec lifeform.hitpoints
+
++
+  rts
+
+.ends

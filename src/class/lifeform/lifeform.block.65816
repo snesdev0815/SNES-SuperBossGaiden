@@ -1,0 +1,68 @@
+/**
+* Enemy blocking the player.
+* Always faces player, only attackable with throw by specific object.
+* 
+*/
+
+.include "src/class/lifeform/lifeform.block.h"
+.section "lifeform.block"
+
+  METHOD init
+  lda.w #SPRITE.block.PTR
+  ldx.w #0
+  jsl extern.lifeform.initialize
+
+  lda OBJECT.CALL.ARG.6,s
+  sta this.class.key
+  
+  lda #LIFEFORM.DIAMETER.DEFAULT*3
+  sta dimension.collision.diameter
+
+  stz lifeform.speed
+  rts
+
+
+  METHOD play
+  lda animation.timer
+  and.w #$7
+  bne +
+    jsl extern.lifeform.turnToTarget
+
++  
+  jsl extern.lifeform.eval
+  rts
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +
+    lda OBJECT.CALL.ARG.6,s
+    cmp #LIFEFORM.ATTACK.THROWN
+    bne ++
+      lda OBJECT.CALL.ARG.3,s
+      and.w #$ff
+      cmp this.class.key
+      bne ++
+        jsl extern.lifeform.onAttack
+        rts
+
+++
+    lda.w #AUDIO.EFFECT.BLOCK
+    jsr interface.dimension.playSoundEffect
+
++  
+  clc
+  rts
+
+
+  CLASS lifeform.block oncommand
+.ends	
+	

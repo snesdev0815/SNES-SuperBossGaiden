@@ -1,0 +1,86 @@
+/**
+* Object that periodically tries to generate another payload object (typically an enemy) if previously generated object doesn't exist anymore
+* 
+*/
+
+.include "src/class/lifeform/lifeform.generator.h"
+.section "lifeform.generator"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta.b dimension.position.x + 1
+
+  lda OBJECT.CALL.ARG.2,s
+  sta.b dimension.position.y + 1
+
+  lda OBJECT.CALL.ARG.5,s
+  sta this.berzerk.yield
+
+  lda OBJECT.CALL.ARG.6,s
+  bne +
+    lda.w #lifeform.bower.CLS.PTR
+    
++  
+  sta this.payload.class
+
+  lda OBJECT.CALL.ARG.7,s
+  sta this.arg.0
+
+  jsr core.random.get
+  sta this.timer
+  rts
+
+  METHOD play
+  inc this.timer
+
+  ;warn player beforehand
+  lda this.createTimer
+  bne +
+    lda this.timer
+    clc
+    adc.w #$7
+    and.w #$7
+    bne +
+      jsr interface.dimension.checkOnScreen
+      bcc +
+        ldx.w #this.payload.object
+        jsr core.object.exists
+        bcs +
+          lda.w #SPRITE.combo_ready.PTR
+          ldx.w #0
+          ldy.w #0
+          jsl extern.lifeform.sprite
+
+          lda.w #$1f
+          sta this.createTimer
+
++
+
+  lda this.createTimer
+  beq +
+    dec this.createTimer
+    bne +
+      pei (this.arg.0)
+      ldy this.payload.class
+      ldx #this.payload.object
+      pei (this.berzerk.yield)
+      pea 0
+      pea 0
+      lda dimension.position.y+1
+      pha
+      lda dimension.position.x+1
+      pha   
+      jsr core.object.create.try
+      pla
+      pla
+      pla
+      pla
+      pla
+      pla
+
++
+  rts
+
+  CLASS lifeform.generator
+.ends	
+	

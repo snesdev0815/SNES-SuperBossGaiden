@@ -1,0 +1,100 @@
+/**
+* Shot fired by MG Rex
+* 
+*/
+.include "src/class/lifeform/lifeform.bossShot.h"
+.section "lifeform.bossShot"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta.b dimension.position.x + 1
+
+  lda OBJECT.CALL.ARG.2,s
+  sta.b dimension.position.y + 1
+
+  sep #$20
+  lda OBJECT.CALL.ARG.5,s
+  sta.b dimension.direction
+  rep #$31
+
+  lda.w #ANIMATION.FLAGS.CENTER_ON_INIT
+  tsb.b animation.flags.static
+
+  lda.w #SPRITE.explosion.dust.PTR
+  jsr sprite.library.startAnimation.try
+  bcs +
+    jmp _kill
+
+
++
+  ;set bg collision basepoint
+  lda dimension.size.x
+  lsr a
+  sta dimension.collision.basepoint.x
+
+  lda dimension.size.y
+  lsr a
+  sta dimension.collision.basepoint.y
+
+  lda.w #OAM.PRIORITY.3
+  sta animation.buffer.flags
+
+  lda.w #7
+  sta.b animation.speed
+
+  lda #LIFEFORM.DIAMETER.DEFAULT*2
+  sta dimension.collision.diameter
+  
+  lda.w #AUDIO.EFFECT.HIT.DASH
+  jmp interface.dimension.playSoundEffect  
+
+
+  METHOD play
+  lda.b dimension.direction
+  and.w #$ff
+  jsr core.math.cos
+  asl a
+  asl a
+  asl a
+  asl a
+
+  sta dimension.speed.x
+
+  lda.b dimension.direction
+  and.w #$ff
+  jsr core.math.sin
+  asl a
+  asl a
+  asl a
+  asl a
+  sta dimension.speed.y
+
+  ldx dimension.speed.x
+  ldy dimension.speed.y
+  jsr dimension.library.translate
+
+  jsr sprite.library.playAnimation
+
+  ;kill after animation has completed.
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.IS_PLAYING
+  bne +
+    bra _kill
+
++
+  rts
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+  METHOD oncommand
+  clc
+  rts
+
+  CLASS lifeform.bossShot oncommand
+
+.ends	
+	

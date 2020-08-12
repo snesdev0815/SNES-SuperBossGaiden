@@ -1,0 +1,18 @@
+/**
+* Background layer file includes
+*
+*/
+
+.Section "BackgroundAnimationLUT" superfree
+BackgroundAnimationLUT:
+  PTRLONG BackgroundAnimationLUT BG.berzerk
+  PTRLONG BackgroundAnimationLUT BG.title.background.packed
+  PTRLONG BackgroundAnimationLUT BG.title.logo.packed
+
+
+.ends
+
+
+  BG_ANIMATION berzerk gfx_status
+  BG_ANIMATION title.background.packed gfx_bg
+  BG_ANIMATION title.logo.packed gfx_bg

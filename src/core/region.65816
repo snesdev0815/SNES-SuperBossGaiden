@@ -1,0 +1,63 @@
+.include "src/core/region.h"
+.section "region"
+
+
+
+/**
+* determine video mode (pal/ntsc)
+* don't check $213f, but cycle-count how long a frame takes instead
+*
+* @return c<bool>	set if PAL(50Hz) mode detected, clear if NTSC mode(60Hz) detected
+*/
+core.region.videoMode:
+  AX16
+  ;php
+  ;rep #$31
+  sep #$20
+  lda.b #0
+  sta.l MEMSEL
+  ldx #$ffff
+-	lda.l HVBJOY
+	bmi -
+
+-	lda.l HVBJOY
+	bpl -
+
+-	inx
+	lda.l HVBJOY
+	bmi -
+  cpx.w #REGION.VIDEOMODE.THRESHOLD
+  bcc _isNtsc
+  
+  lda.b #MEMSEL_FASTROM_ENABLE
+  sta.l MEMSEL
+
+  ;plp
+  rep #$31
+  sec
+  rts
+
+_isNtsc:
+  lda.b #MEMSEL_FASTROM_ENABLE
+  sta.l MEMSEL  
+  
+  ;plp
+  rep #$31
+  clc
+  rts
+
+core.region.videoRefreshRate:
+  AX16
+	;php
+	;rep #$31
+	jsr core.region.videoMode
+	lda.w #REGION.VIDEO.REFRESH.NTSC
+	bcc +
+		lda.w #REGION.VIDEO.REFRESH.PAL
+
++
+  sta.w GLOBALS.nmi.refreshRate
+	;plp
+	rts
+
+.ends

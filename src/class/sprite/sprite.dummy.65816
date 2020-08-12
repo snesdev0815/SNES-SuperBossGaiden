@@ -1,0 +1,51 @@
+/**
+* Dummy sprite used to hold allocation of static animations.
+* 
+* @param a<int, 16bit>  x-pos
+* @param 1<int, 16bit>  y-pos
+*/
+
+.include "src/class/sprite/sprite.dummy.h"
+.section "sprite.dummy"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta.b this.currentAnimation
+
+  lda.w #(ANIMATION.FLAGS.POSITION_ABSOLUTE | ANIMATION.FLAGS.PRIORITY_MAX)
+  tsb.b animation.flags.static
+
+  lda this.currentAnimation
+  jsr sprite.library.startAnimation.try
+  bcs +
+    jmp _kill
+
++
+  ;play once, then disable
+  jmp sprite.library.playAnimation
+
+
+  METHOD pause
+  jmp sprite.library.commitOnly
+
+
+  METHOD play
+  jmp sprite.library.commitOnly
+
+
+  METHOD kill
+  jmp sprite.library.kill  
+
+
+  METHOD disable
+  rts
+
+
+  METHOD enable
+  rts
+  
+
+  CLASS sprite.dummy
+
+.ends	
+	

@@ -1,0 +1,207 @@
+/**
+* (sprite) static tile pool manager
+*
+* Because vram for sprite tiles is allocated dynamically, we often end up wasting multiple entries for identical tilesets if the same sprites (or sprites sharing tilesets) are instanciated more than once.
+* Therefore, each tileset being allocated is hashed and that hash stored alongside allocation id and count of dependant objects.
+* That way, we only have to allocate it once and can give out the same allocated vram space to multiple sprites, then deallocate it once it's not in use anymore
+*/
+
+
+.include "src/core/oam_tiles.pool.h"
+.section "oam_tiles.pool"
+
+core.oam_tiles.pool.init:
+  AX16
+  lda.w #0
+  ldy.w #OAM_TILES.POOL.GLOBAL.END - OAM_TILES.POOL.GLOBAL.START
+  ldx.w #OAM_TILES.POOL.GLOBAL.START
+  jmp ClearWRAM
+
+/**
+* get hash, check against already allocated static sprite tiles, return allocated entry
+*
+* if not in buffer, allocate vram as required, write hash & allocation details into buffer
+*   -if buffer full, return false
+* if in buffer, update
+* return allocated allocation id & start, return true if allocation succeeded
+*
+* @param a<int,16bit>   sprite tile hash
+* @param y<int,16bit>   data length 8x8 tiles
+* @param x<int,16bit>   data length 32x32 tiles
+*
+* @return a <int,16bit>	lower 8bit: allocation block id. upper 8bit: number of subscribers (helpful to determine whether graphics need to be uploaded again)
+* @return y <int,16bit> vram start adress 32x32 tiles
+* @return x <int,16bit>	vram start adress 8x8 tiles
+* @return c <bool>	true if allocation succeeded
+*/
+core.oam_tiles.pool.allocate:
+  AX16
+  phx
+  phy
+  sta.w GLOBAL.oam_tiles.pool.hash.current
+  
+  jsr _isHashInPool
+  bcs +
+
+    ;hash not in pool, allocate vram
+    ldy.w GLOBAL.oam.vram.start
+    lda.b 1,s
+    tax
+    lda.b 3,s
+    tay
+    lda.w #SPRITE.TILE.GRANULARITY
+    
+    jsr core.vram.allocate.tile.sprite
+    ;* @return a <int,8bit>  allocation block id
+    ;* @return x <int,16bit> vram start adress
+
+    bcs ++
+      ;silent fail
+      ply
+      plx
+      rts
+
+++
+    ;after allocation, seek free slot in vram pool
+    pha
+    phx
+    phy
+    jsr _getFreePoolSlot
+    bcs ++
+      TRIGGER_ERROR E_VramPoolFull
+
+++
+    ;store allocation information in found pool slot
+    pla
+    sta.w GLOBAL.oam_tiles.pool.1.allocation.startBig,x
+    pla
+    sta.w GLOBAL.oam_tiles.pool.1.allocation.start,x
+    pla
+    sep #$20
+    sta.w GLOBAL.oam_tiles.pool.1.allocation.id,x
+    rep #$31
+
+    lda.w GLOBAL.oam_tiles.pool.hash.current
+    sta.w GLOBAL.oam_tiles.pool.1.hash,x
+      
++
+  ;got slot for requested hash (either by finding existing or creating new entry), return allocation info
+  ply
+  ply
+  inc.w GLOBAL.oam_tiles.pool.1.subscribers,x
+  lda.w GLOBAL.oam_tiles.pool.1.allocation.start,x
+  pha
+  lda.w GLOBAL.oam_tiles.pool.1.allocation.startBig,x
+  pha
+
+  sep #$20
+  lda.w GLOBAL.oam_tiles.pool.1.subscribers,x
+  xba
+  lda.w GLOBAL.oam_tiles.pool.1.allocation.id,x
+  rep #$31
+  ply
+  plx
+  
+  sec
+  rts
+
+/**
+*
+* @param a<int,16bit>   hash 
+*
+* @return c <bool>	true if found
+* @return x <int,16bit>	pointer to hash in pool if hash found
+*/
+_isHashInPool:
+  AX16
+  pha
+  ldx #0
+-   lda 1,s
+    cmp.w GLOBAL.oam_tiles.pool.1.hash,x
+    bne ++
+      lda.w GLOBAL.oam_tiles.pool.1.subscribers,x
+      and.w #$ff
+      bne +
+++    
+    txa
+    clc
+    adc.w #_sizeof_poolEntry
+    cmp #_sizeof_poolEntry * GLOBAL.OAM_TILES.POOL.ENTRIES    
+    tax
+    
+    bcc -
+
+  pla
+  clc
+  rts
+  
++
+  pla
+  sec
+  rts
+
+
+/**
+*
+* @param a<int,16bit>   hash 
+*
+* @return c <bool>	true if found
+* @return x <int,16bit>	pointer to free slot
+*/
+_getFreePoolSlot:
+  ldx #0
+-   lda.w GLOBAL.oam_tiles.pool.1.subscribers,x
+    and.w #$ff
+    beq +
+    
+    txa
+    clc
+    adc.w #_sizeof_poolEntry
+    cmp #_sizeof_poolEntry * GLOBAL.OAM_TILES.POOL.ENTRIES    
+    tax
+    
+    bcc -
+
+  clc
+  rts
+  
++ 
+  sec
+  rts
+
+
+/**
+* signal from object that it doesn't need allocated vram anymore
+*
+* if not in buffer, trigger error 
+
+* if in buffer, decrease member count of that hash
+*   -if member count 0, deallocate vram & remove entry from buffer
+*
+* @param a <int,16bit>  hash
+*/
+core.oam_tiles.pool.deallocate:
+  AX16
+  
+  jsr _isHashInPool
+  bcs +
+    TRIGGER_ERROR E_VramPoolBadDeallocation
+
++
+  sep #$20
+  dec.w GLOBAL.oam_tiles.pool.1.subscribers,x
+
+  bpl +
+    ;if hash was deallocated more often than allocated, something went horribly wrong...
+    TRIGGER_ERROR E_VramPoolEmptyDeallocation
++
+  bne +
+    ;if no subscribers left, vram is free to be deallocated
+    lda.w GLOBAL.oam_tiles.pool.1.allocation.id,x
+    jsr core.vram.deallocate
+
++
+  rep #$31
+  rts
+
+.ends

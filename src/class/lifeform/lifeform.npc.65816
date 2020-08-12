@@ -1,0 +1,82 @@
+/**
+* NPC lifeform, just standing there
+* 
+*/
+.include "src/class/lifeform/lifeform.npc.h"
+.section "lifeform.npc"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.6,s
+  bne +
+    lda.w #SPRITE.boss.dummy.PTR
+
++  
+  ldx.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT | LIFEFORM.ABILITIES.MOVE.DOWN | LIFEFORM.ABILITIES.MOVE.UP)
+  jsl extern.lifeform.initialize  
+  rts
+
+  METHOD play
+  lda.w #0
+  jsl extern.lifeform.movement.evaluate
+
+  jsl extern.lifeform.animate
+
+  ;always harmless
+  lda.w #OBJECT.PROPERTIES.hurts
+  jsr iterator.library.clearProperties
+
+  jsl extern.lifeform.checkOffscreenKill
+  rts
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.JUMP
+  bne +
+    sep #$20
+    lda #LIFEFORM.STATE.JUMPING
+    sta lifeform.state
+
+    lda #LIFEFORM.CONDITION.AIRBORNE
+    sta lifeform.condition
+
+    lda #LIFEFORM.JUMP.AGE
+    sta lifeform.action.age
+    rep #$31
+
+    lda.w #AUDIO.EFFECT.DASH
+    jsr interface.dimension.playSoundEffect
+
+
+    lda #-9000
+    sta dimension.speed.y
+
+    lda #-800
+    sta dimension.acceleration.y
+
+    ;overcome ground traction
+    dec dimension.position.y+1
+
+    lda.w #SPRITE.dust.PTR
+    ldx.w #0
+    ldy.w #10
+    jsl extern.lifeform.sprite
+
+    sec
+    rts
+
++
+  clc
+  rts
+
+
+  CLASS lifeform.npc oncommand
+
+.ends	

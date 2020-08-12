@@ -1,0 +1,126 @@
+/**
+* Generic animated sprite with single animation file 
+* 
+* @param a<int, 16bit>  x-pos
+* @param 1<int, 16bit>  y-pos
+*/
+
+.include "src/class/sprite/sprite.generic.h"
+.section "sprite.generic"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta.b dimension.position.x + 1
+
+  lda OBJECT.CALL.ARG.2,s
+  sta.b dimension.position.y + 1
+
+  lda OBJECT.CALL.ARG.3,s
+  sta.b this.currentAnimation
+
+  lda.w #OAM.PRIORITY.3
+  sta animation.buffer.flags
+
+  lda OBJECT.CALL.ARG.5,s
+  and.w #(ANIMATION.FLAGS.STATIC.PALETTES | ANIMATION.FLAGS.STATIC.TILES | ANIMATION.FLAGS.UPLOADED.PALETTES | ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.UPLOADED.TILES_BIG | ANIMATION.FLAGS.ANY.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES | ANIMATION.FLAGS.UPLOADED.TILEMAP | ANIMATION.FLAGS.IS_PLAYING) ~$ffff
+  tsb.b animation.flags.static
+
+  lda this.currentAnimation
+  jsr sprite.library.startAnimation.try
+  bcs +
+    ;kill self immediately again if allocation failed
+    jmp _kill
+
++
+  lda OBJECT.CALL.ARG.4,s
+  sta.b animation.speed
+  rts
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD play
+  lda this.shaker
+  beq +
+  lsr a
+  pha
+  inc this.counter
+  lda this.counter
+  ror a
+  
+  bcc ++
+      ;left
+      lda dimension.position.x+1
+      sec
+      sbc 1,s
+      sta dimension.position.x+1
+      bra +++
+
+++
+      lda dimension.position.x+1
+      clc
+      adc 1,s
+      sta dimension.position.x+1
+
+
++++
+  pla
+  dec this.shaker
+
++  
+  jmp sprite.library.playAnimation
+
+  METHOD kill
+  jmp sprite.library.kill  
+
+  METHOD disable
+  jmp sprite.library.disable
+
+  METHOD enable
+  jmp sprite.library.enable
+  
+  METHOD setFrame
+  jmp sprite.library.setFrame
+
+  METHOD stop
+  jmp sprite.library.stopAnimation
+
+  METHOD setPriority
+  sta animation.buffer.flags
+  jmp sprite.library.initOamVars
+
+  METHOD startAnimation
+  lda OBJECT.CALL.ARG.1,s
+  sta this.currentAnimation
+  jmp sprite.library.startAnimation
+
+  METHOD getAllocatedPalette
+  ldx.b animation.palette.start
+  ldy.b animation.palette.length
+  lda.b animation.palette.id
+  and.w #$ff
+  clc
+  beq +
+    sec
+
++ rts
+
+  METHOD getFrame
+  lda animation.frame.current
+  rts
+  
+  METHOD getCenterPosition
+  jmp interface.dimension.getCenterPosition
+
+  METHOD shake
+  lda dimension.position.x+1
+  sta this.buffer.pos.x
+  lda dimension.position.y+1
+  sta this.buffer.pos.y
+  lda.w #13
+  sta this.shaker
+  rts
+
+  CLASS sprite.generic stop setFrame getFrame setPriority startAnimation getCenterPosition shake
+
+.ends

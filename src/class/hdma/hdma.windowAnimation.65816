@@ -1,0 +1,67 @@
+/**
+* HDMA object that plays animation targetting color math window.
+* 
+*/
+
+.include "src/class/hdma/hdma.windowAnimation.h"
+.section "hdma.windowAnimation"
+
+  /**
+   * @param 1<int, 16bit>  id of hdma animation
+   */
+  METHOD init
+hdma.windowAnimation.init:
+  lda.w ANIMATION.FLAGS.IS_LOOPING
+  trb hdma.animation.flags
+
+  lda OBJECT.CALL.ARG.1,s
+  jsr hdma.library.startAnimation
+  sep #$20
+
+  lda hdma.flags
+  ora #DMAP_4_REG_WRITE_ONCE
+  sta hdma.flags
+
+  lda #W1L & $ff
+  sta hdma.target
+
+  rep #$31
+  jmp hdma.library.start
+
+
+  METHOD play
+  jmp hdma.library.playAnimation
+
+  METHOD stop
+  jmp hdma.library.stopAnimation
+
+  METHOD getFrame
+  lda hdma.animation.frame.current
+  rts
+
+  METHOD setFrame
+  lda OBJECT.CALL.ARG.1,s
+  sta hdma.animation.frame.current
+  rts
+
+  METHOD kill
+hdma.windowAnimation.kill:  
+  jsr hdma.library.stop
+  ;store invalid window 1/2 position to disable window
+  lda.w #1
+  sta.l W1L
+  sta.w window1Left
+  sta.l W2L
+  sta.w window2Left
+  jmp object.library.kill
+
+  METHOD isDone
+  jmp hdma.library.isDone
+
+  METHOD startAnimation
+  lda OBJECT.CALL.ARG.1,s
+  jmp hdma.library.startAnimation
+
+  CLASS hdma.windowAnimation stop setFrame getFrame isDone startAnimation
+.ends	
+	

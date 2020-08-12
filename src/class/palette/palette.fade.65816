@@ -1,0 +1,441 @@
+/**
+* Fade palette entries to target palette
+*
+*/
+
+.include "src/class/palette/palette.fade.h"
+.section "palette.fade"
+
+  /**
+  * @param arg.1 <int, 16bit>    color start id
+  * @param arg.2 <int, 16bit>    color count
+  * @param arg.3 <int, 16bit>    delay (0=fastest)
+  * @param arg.4 <int, 16bit>    target palette id
+  */
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta palette.color.start
+  lda OBJECT.CALL.ARG.2,s
+  sta palette.color.length
+  lda OBJECT.CALL.ARG.3,s
+  sta this.delay
+  lda.w #ANIMATION.FLAGS.IS_LOOPING
+  trb palette.animation.flags
+
+  stz palette.animation.speed
+
+  lda #3
+  jsr palette.library.init
+
+  stz this.state
+
+  ;init ram buffer pointers
+  lda palette.ramBuffer.start
+  sta this.palette.pointer.0
+
+  lda palette.color.length
+  asl a
+  clc
+  adc this.palette.pointer.0
+  sta this.palette.pointer.1
+
+  lda palette.color.length
+  asl a
+  clc
+  adc this.palette.pointer.1
+  sta this.palette.pointer.2
+
+  rts
+
+
+_stateLUT:
+  .dw _void
+  ;normal fade to
+  .dw _wait
+  .dw _fetch
+  .dw _wait
+  .dw _primeTo
+  .dw _fade
+  .dw _idle
+  ;reverse fade from
+  .dw _wait
+  .dw _fetch
+  .dw _wait
+  .dw _primeFrom
+  .dw _fade
+  .dw _idle
+
+_void:
+  rts
+  
+_fetch:
+  AX16
+  jsr palette.library.fetch
+  bcc +
+    inc this.state
+
++    
+  rts
+
+_primeTo:
+  AX16
+  ;copy current palette to 2nd entry
+  pei (palette.color.length)
+  ldx this.palette.pointer.0
+  ldy this.palette.pointer.1
+-
+    lda.w GLOBAL.wramBuffer.start,x
+    sta.w GLOBAL.wramBuffer.start,y
+    inx
+    inx
+    iny
+    iny
+    lda 1,s
+    dec a
+    sta 1,s
+    bne -
+
+  pla
+
+  inc this.state
+  rts
+
+_primeFrom:
+  AX16
+  ;copy current palette to 2nd entry
+  pei (palette.color.length)
+  ldx this.palette.pointer.0
+  ldy this.palette.pointer.1
+-
+    lda.w GLOBAL.wramBuffer.start,x
+    sta.w GLOBAL.wramBuffer.start,y
+    inx
+    inx
+    iny
+    iny
+    lda 1,s
+    dec a
+    sta 1,s
+    bne -
+
+  pla
+
+  ;copy target (first frame of animation) to current palette
+  pei (palette.color.length)
+  ldy #0
+  ldx this.palette.pointer.0
+-
+    lda [palette.animation.frame.pointer],y
+    sta.w GLOBAL.wramBuffer.start,x
+    inx
+    inx
+    iny
+    iny
+    lda 1,s
+    dec a
+    sta 1,s
+    bne -
+
+  pla
+  inc this.state
+  rts
+
+_idle:
+  rts
+
+_wait:
+  inc this.state
+  rts
+
+_fade:
+  inc this.counter
+  lda this.counter
+  and this.delay
+  bne +
+    jsr _fadePalette
+    bcc ++
+      CALL Palette.fade.kill.MTD iterator.self
+++
+    jsr palette.library.flush
+
++
+  rts
+
+
+  METHOD play
+  lda this.state
+  asl a
+  tax
+  jsr (_stateLUT,x)
+  rts
+
+  METHOD kill
+  jmp palette.library.kill
+
+_fadePalette:
+  AX16
+  pea 0 ;number of non-matching colors
+  pea 0
+-
+    lda 1,s
+    asl a
+    clc
+    adc this.target.pointer
+    tax
+    lda.w GLOBAL.wramBuffer.start,x
+    pha
+
+    lda 3,s
+    asl a
+    clc
+    adc this.palette.pointer.0
+    tax
+    lda.w GLOBAL.wramBuffer.start,x
+    pha
+    jsr _fadeColor
+    sta.w GLOBAL.wramBuffer.start,x
+
+    lda 3,s
+    and.w #$7fff
+    cmp 1,s
+    beq +
+      lda 7,s
+      inc a
+      sta 7,s
+
++
+    pla
+    pla
+    
+  
+    lda 1,s
+    inc a
+    sta 1,s
+    cmp palette.color.length
+    bne -
+  
+
+  pla
+  pla
+  beq +
+
+  clc
+  rts
+
++
+  sec
+  rts
+
+_fadeColor:
+  .accu 16
+  phx
+  pea 0
+
+  ;blend r
+  lda 9,s
+  and.w #COLDATA_INTENSITY
+  tax
+  lda 7,s
+  and.w #COLDATA_INTENSITY
+  jsr _blend
+  pha
+  lda 3,s
+  ora 1,s
+  sta 3,s
+  pla
+
+  ;blend g
+  lda 9,s
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  and.w #COLDATA_INTENSITY
+  tax
+  lda 7,s
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  and.w #COLDATA_INTENSITY
+  jsr _blend
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  pha
+  lda 3,s
+  ora 1,s
+  sta 3,s
+  pla
+
+  ;blend b
+  lda 9,s
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  and.w #COLDATA_INTENSITY
+  tax
+  lda 7,s
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  and.w #COLDATA_INTENSITY
+  jsr _blend
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  pha
+  lda 3,s
+  ora 1,s
+  sta 3,s
+  pla
+
+  pla
+  plx
+  rts
+
+_blend:
+  .accu 16
+  .index 16
+  phx
+  cmp 1,s
+  beq ++
+  bcc +
+    dec a
+    bra ++
++
+    inc a
+++
+  plx
+  rts
+
+  METHOD set
+  lda OBJECT.CALL.ARG.1,s
+  sta palette.animation.id
+
+  jsr palette.library.startAnimation
+
+  ;get current frame pointer
+  jsr palette.library.setupFramePointer
+
+  ;copy target (first frame of animation) to 3rd entry
+  pei (palette.color.length)
+  ldy #0
+  ldx this.palette.pointer.0
+-
+    lda [palette.animation.frame.pointer],y
+    sta.w GLOBAL.wramBuffer.start,x
+    inx
+    inx
+    iny
+    iny
+    lda 1,s
+    dec a
+    sta 1,s
+    bne -
+
+  pla
+  jmp palette.library.flush
+
+  METHOD fadeTo
+  .accu 16
+  lda OBJECT.CALL.ARG.1,s
+  sta palette.animation.id
+
+  jsr palette.library.startAnimation
+
+  ;get current frame pointer
+  jsr palette.library.setupFramePointer
+
+  ;copy target (first frame of animation) to 3rd entry
+  pei (palette.color.length)
+  ldy #0
+  ldx this.palette.pointer.2
+-
+    lda [palette.animation.frame.pointer],y
+    sta.w GLOBAL.wramBuffer.start,x
+    inx
+    inx
+    iny
+    iny
+    lda 1,s
+    dec a
+    sta 1,s
+    bne -
+
+  pla
+  lda this.palette.pointer.2
+  sta this.target.pointer
+
+  lda.w #PALETTE_FADE.STATE.WAIT
+  sta this.state
+  rts
+
+  METHOD restore
+  ;assume that original palette lies in slot, copy to 0, then flush
+  pei (palette.color.length)
+  ldx this.palette.pointer.1
+  ldy this.palette.pointer.0
+-
+    lda.w GLOBAL.wramBuffer.start,x
+    sta.w GLOBAL.wramBuffer.start,y
+    inx
+    inx
+    iny
+    iny
+    lda 1,s
+    dec a
+    sta 1,s
+    bne -
+
+  pla
+  jsr palette.library.flush
+  CALL Palette.fade.kill.MTD iterator.self
+  rts
+
+
+  METHOD fadeFrom
+  lda OBJECT.CALL.ARG.1,s
+  sta palette.animation.id
+
+  jsr palette.library.startAnimation
+
+  ;get current frame pointer
+  jsr palette.library.setupFramePointer
+
+  lda this.palette.pointer.1
+  sta this.target.pointer
+
+  lda.w #PALETTE_FADE.STATE.WAIT3
+  sta this.state
+  rts
+
+  CLASS Palette.fade fadeTo fadeFrom set restore
+
+.ends	
+	

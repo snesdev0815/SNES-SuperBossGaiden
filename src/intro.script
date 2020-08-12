@@ -1,0 +1,61 @@
+/**
+* Cutscene after collecing cone
+*
+*/
+
+  SCRIPT intro
+  	.redef obj.vwf hashPtr.3
+	.redef obj.parser hashPtr.4
+
+	.redef obj.brightness this._tmp
+	.redef obj.fixedColor this._tmp+4
+
+	SCRIPT_NEW Brightness.CLS.PTR obj.brightness
+	lda.w #BRIGHTNESS.FULL
+	SCRIPT_CALL Brightness.fadeTo.MTD obj.brightness
+
+	SCRIPT_NEW fixedColor.CLS.PTR obj.fixedColor
+	lda.w #FIXED_COLOR.BLACK
+	SCRIPT_CALL fixedColor.set.MTD obj.fixedColor
+	SCRIPT_NEW_TRY background.textlayer.vwf.CLS.PTR obj.vwf $1800 BG.LAYER.2 7 1
+
+	pei (obj.vwf)
+	pei (obj.vwf+2)
+	SCRIPT_NEW vwf.parser.CLS.PTR obj.parser
+	pla
+	pla
+
+
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+    	rts
+
++
+	;draw text
+	pea VOID
+	pea 64
+	pea 80
+	pea 176
+	pea FONT.big_2bpp.PTR
+	pea text.dialogue.introSetting
+	SCRIPT_CALL vwf.parser.print.MTD obj.parser
+	pla
+	pla
+	pla
+	pla
+	pla
+	pla
+
+	;wait for print complete
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+		rts
+
++
+	CUTSCENE_WAIT_LONG
+
+  	DIE
+  
+  

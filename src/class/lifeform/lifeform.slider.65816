@@ -1,0 +1,81 @@
+/**
+* Standing enemy, jumps in place when player is higher than him.
+* Only killable with dash slide move
+*
+*/
+
+.include "src/class/lifeform/lifeform.slider.h"
+.section "lifeform.slider"
+
+  METHOD init
+  lda.w #SPRITE.slider.dummy.PTR
+  ldx.w #LIFEFORM.ABILITIES.JUMP
+  jsl extern.lifeform.initialize
+
+  lda #LIFEFORM.DIAMETER.DEFAULT*2.5
+  sta dimension.collision.diameter
+
+  lda.w #1
+  sta lifeform.hitpoints
+
+  lda.w #1
+  sta lifeform.bouncyness
+  rts
+
+  METHOD play
+  lda animation.timer
+  and.w #$1
+  bne +
+    stz lifeform.controller.current.actions
+    jsl extern.lifeform.turnToTarget
+    bcc +
+    
+    ;player above us? jump!
+    CALL lifeform.library.getCollisionBasepoint.MTD iterator.target
+    phy
+    jsl extern.lifeform.getBasePosition
+    tya
+    cmp 1,s
+    beq ++
+    bcc ++
+      lda lifeform.controller.current.actions
+      ora.w #LIFEFORM.ABILITIES.JUMP
+      sta lifeform.controller.current.actions
+
+++    
+    ply
++  
+  jsl extern.lifeform.evalOffscreen
+  rts
+
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +  
+      lda OBJECT.CALL.ARG.6,s
+      cmp #LIFEFORM.ATTACK.SLIDE
+      bne ++
+        jsl extern.lifeform.onAttack
+        rts
+
+++
+    lda.w #AUDIO.EFFECT.BLOCK
+    jsr interface.dimension.playSoundEffect
+
++
+  clc
+  rts
+
+  CLASS lifeform.slider oncommand
+
+.ends	
+	

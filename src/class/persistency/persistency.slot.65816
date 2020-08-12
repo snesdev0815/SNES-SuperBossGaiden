@@ -1,0 +1,602 @@
+/**
+* Container for persisten save data (battery-backed SRAM or FlashROM), holds one slot
+*/
+.include "src/class/persistency/persistency.slot.h"
+.section "persistency.slot"
+
+  METHOD init
+  jsr core.region.videoRefreshRate
+  sta this.fps
+  jmp uploadFlashRoutines
+
+
+  METHOD play
+  jmp _updatePlaytime
+
+persistency.saveFlashByte:
+  AX16
+  pha
+  jsr core.nmi.stop
+  lda.w #0
+  sta.l HDMAEN
+  pla
+  jsl GLOBAL.flash.code + (flash.code.writeSaveByte-flash.code)
+  jmp core.nmi.start
+
+persistency.checkFlashOk:
+  AX16
+  jsr core.nmi.stop
+  lda.w #0
+  sta.l HDMAEN
+  jsl GLOBAL.flash.code + (flash.code.getFlashId-flash.code)
+  cmp.w #FLASH.MX29F400CB.ID
+  beq +
+    clc
++  
+  jmp core.nmi.start
+
+
+uploadFlashRoutines:
+  AX16
+  phd
+  lda.w #ZP
+  tcd
+
+  pea flash.code.end - flash.code
+  pea GLOBAL.flash.code
+  pea :flash.code
+  pea flash.code
+  jsr core.memory.copyToWRAM
+  pla
+  pla
+  pla
+  pla
+  
+  pld
+  rts
+
+;mx29f400 flash rom
+flash.code:
+flash.code.writeSaveByte:
+  AX16
+  ldx.w #0
+  php
+  sep #$20
+  pha
+  lda.b #$AA
+  sta.l $808AAA
+  
+  lda.b #$55
+  sta.l $808555
+  
+  lda.b #$A0
+  sta.l $808AAA
+  pla
+  sta.l flash.saveByte
+
+-
+    ;timeout ?
+    dex
+    beq +
+
+    ;value written yet?
+    cmp.l flash.saveByte
+    bne -
+
+  lda.b #$f0
+  sta.l $808000
+  plp
+  sec
+  rtl
+
++
+  ;fail
+  lda.b #$f0
+  sta.l $808000
+  plp
+  clc
+  rtl
+
+flash.code.getFlashId:
+  AX16
+  ldx.w #0
+  php
+  sep #$20
+  lda.b #$AA
+  sta.l $808AAA
+  
+  lda.b #$55
+  sta.l $808555
+  
+  lda.b #$90
+  sta.l $808AAA
+  lda.l $808002
+  xba
+  lda.l $808000
+
+  pha
+  lda.b #$f0
+  sta.l $808000
+  pla
+
+  plp
+  sec
+  rtl
+
+flash.code.end:
+
+;wraps around at max
+_updatePlaytime:
+  php
+  sep #$20
+  inc this.playtime.frame
+  lda this.playtime.frame
+  cmp this.fps
+  bcc +
+    stz this.playtime.frame
+    inc this.playtime.second
+    lda this.playtime.second
+    cmp #60
+    bcc +
+      stz this.playtime.second
+      inc this.playtime.minute
+      lda this.playtime.minute
+      cmp #60
+      bcc +
+        stz this.playtime.minute
+        inc this.playtime.hour
++  
+  plp
+  rts
+
+_rewriteChecksum:
+  php
+  sep #$20
+  jsr _computeChecksum
+
+  sta this.chsum
+  eor.b #$ff
+  inc a
+  sta this.chsum.xor
+  plp
+  rts
+
+  /**
+  *
+  * @return c<bool>  true if valid
+  */
+_testChecksum:
+  AX16
+  pha
+  phx
+  lda #PERSISTENCY.SLOT.MAGIC
+  cmp this.magic
+  bne ++
+
+  sep #$20
+  lda this.chsum
+  eor.b #$ff
+  inc a
+  cmp this.chsum.xor
+  rep #$30
+  bne ++
+
+  sep #$20
+  jsr _computeChecksum
+  cmp this.chsum
+  rep #$30
+  bne ++
+
+  plx
+  pla
+  sec
+  rts
+
+++
+  plx
+  pla
+  clc
+  rts
+
+  /**
+  * load slot data from persistent memory (SRAM or SEEPROM)
+  *
+  * @param a<int,16bit>   slot id
+  *
+  * @return c<bool>  true if successful
+  */
+  METHOD load
+  cmp #PERSISTENCY.SLOT.COUNT
+  bcc +
+    pha
+    TRIGGER_ERROR E_IndexError
+    pla
+
++
+  sep #$20
+  sta this.id
+  rep #$31
+.if USE_FLASH_SAVE == 1
+  sep #$20
+  lda.l flash.saveByte
+  eor.b #$ff
+  sta this.bitflag
+  rep #$31
+.else
+  jsr _sram.load
+
+  jsr _testChecksum
+  bcs +
+    jsr _initializeStats
+    lda this.id
+    and.w #$ff
+    jsr _sram.save
+
+    clc
+    rts
+
++
+  lda.w #((FLAG.PERSISTENT.PLAYER_ENABLE.1 << 8) | PERSISTENCY.SLOT.BITFLAG)
+.endif  
+  sec
+  rts
+
+_initializeStats:
+  AX16
+  jsr _clearSlotData
+  lda #PERSISTENCY.SLOT.MAGIC
+  sta this.magic
+
+  jmp _rewriteChecksum
+
+_sram.load:
+  php
+  rep #$31
+  pha
+  asl a
+  clc
+  adc 1,s
+  tax
+  pla
+
+  lda.l persistency.sram.slot.lut,x
+  sta this.pointer
+  lda.l persistency.sram.slot.lut+1,x
+  sta this.pointer+1
+
+  ldy #0
+  ldx #0
+  sep #$20
+-   lda.b [this.pointer],y
+    sta.b this,x
+    inx
+    iny
+    cpy #PERSISTENCY.SLOT.LENGTH
+    bne -
+
+  plp
+  rts
+
+_sram.save:
+  php
+  rep #$31
+  pha
+  asl a
+  clc
+  adc 1,s
+  tax
+  pla
+
+  lda.l persistency.sram.slot.lut,x
+  sta this.pointer
+  lda.l persistency.sram.slot.lut+1,x
+  sta this.pointer+1
+
+  ldy #0
+  ldx #0
+  sep #$20
+-   lda.b this,x
+    sta.b [this.pointer],y
+    inx
+    iny
+    cpy #PERSISTENCY.SLOT.LENGTH
+    bne -
+
+  plp
+  rts
+
+_clearSlotData:
+  php
+  rep #$31
+  ldx #0
+  sep #$20
+-   stz.b this,x
+    inx
+    cpx #PERSISTENCY.SLOT.LENGTH
+    bne -
+
+  plp
+  rts
+
+
+  /**
+  * save slot data to persistent memory (SRAM or SEEPROM)
+  *
+  * @param a<int,16bit>   slot id
+  *
+  * @return c<bool>  true if successful
+  */
+  METHOD save
+  cmp #PERSISTENCY.SLOT.COUNT
+  bcc +
+    pha
+    TRIGGER_ERROR E_IndexError
+
++
+.if USE_FLASH_SAVE == 1
+  sep #$20
+  lda this.bitflag
+  eor.b #$ff
+  cmp.l flash.saveByte
+  rep #$31
+  beq +
+    and.w #$ff
+    jmp persistency.saveFlashByte
+
++
+  ;dont write again if value identical
+  sec
+  rts
+
+.else
+  pha
+  jsr _testChecksum
+  bcs +
+    pla
+    clc
+    rts
+
++
+  pla
+  jsr _sram.save
+  sec
+  rts
+.endif
+
+
+  /**
+  * generic getter.
+  *
+  * @param 1<int,16bit>   field id (lower 8 bit: field class id. upper 8 bit: field subid)
+  *
+  * @return a<int,16bit>  field value
+  */
+  METHOD get
+  lda OBJECT.CALL.ARG.1,s
+
+_getInternal:
+  tax
+  tay
+
+  and.w #$ff
+  cmp #PERSISTENCY.SLOT.MAX
+  bcc +
+    pha
+    TRIGGER_ERROR E_IndexError
+
++
+  asl a
+  tax
+  jsr (_getter.lut,x)
+
+  rts
+
+_getter.lut:
+  .dw _getter.playtime.second
+  .dw _getter.playtime.minute
+  .dw _getter.playtime.hour
+  .dw _getter.bitflag
+
+_getter.playtime.second:
+  .accu 16
+  lda this.playtime.second
+  and.w #$ff
+  rts
+
+_getter.playtime.minute:
+  .accu 16
+  lda this.playtime.minute
+  and.w #$ff
+  rts
+
+_getter.playtime.hour:
+  .accu 16
+  lda this.playtime.hour
+  and.w #$ff
+  rts
+
+_getter.bitflag:
+  .accu 16
+  tya
+  xba
+  and.w #$ff
+  cmp.w #BITFLAG.PERSISTENT.COUNT
+  bcc +
+    pha
+    TRIGGER_ERROR E_IndexError
+
++
+
+  pha
+  lsr a
+  lsr a
+  lsr a
+  tax
+
+  lda 1,s
+  and.w #7
+  tay
+
+  lda.b this.bitflag,x
+
+- cpy #0
+  beq +
+    lsr a
+    dey
+    bra -
+
++
+  plx
+  and.w #1
+  rts
+
+  /**
+  * generic setter.
+  * checks & recalculates checksum
+  *
+  * @param 1<int,16bit>   field id (lower 8 bit: field class id. upper 8 bit: field subid)
+  * @param a<int,16bit>   field value
+  *
+  */
+  METHOD set
+  pha
+  bcs +
+    TRIGGER_ERROR E_ChecksumMismatch
+
++
+  lda OBJECT.CALL.ARG.1+2,s
+  tay
+  and.w #$ff
+  cmp #PERSISTENCY.SLOT.MAX
+  bcc +
+    pha
+    TRIGGER_ERROR E_IndexError
+
++
+  asl a
+  tax
+  jsr (_setter.lut,x)
+  jsr _rewriteChecksum
+  pla
+  sec
+  rts
+
+_setter.lut:
+  .dw _setter.playtime.second
+  .dw _setter.playtime.minute
+  .dw _setter.playtime.hour
+  .dw _setter.bitflag
+
+
+.def VALUE 3
+
+_setter.playtime.second:
+  .accu 16
+  sep #$20
+  lda VALUE,s 
+  cmp.b #61
+  bcc +
+    pha
+    TRIGGER_ERROR E_ValueError
+
++
+  sta this.playtime.second
+  rep #$31
+  rts
+
+_setter.playtime.minute:
+  .accu 16
+  sep #$20
+  lda VALUE,s 
+  cmp.b #61
+  bcc +
+    pha
+    TRIGGER_ERROR E_ValueError
+
++
+  sta this.playtime.minute
+  rep #$31
+  rts
+
+_setter.playtime.hour:
+  .accu 16
+  sep #$20
+  lda VALUE,s 
+  sta this.playtime.hour
+  rep #$31
+  rts
+
+_setter.bitflag:
+  .accu 16
+  tya
+  xba
+  and.w #$ff
+  cmp.w #BITFLAG.PERSISTENT.COUNT
+  bcc +
+    pha
+    TRIGGER_ERROR E_IndexError
+
++
+  pha
+  lsr a
+  lsr a
+  lsr a
+  tax
+
+  lda 1,s
+  and.w #7
+  tay
+
+  sep #$20
+  lda #1
+  sta this.tmp
+  lda VALUE+2,s
+  and.b #1
+
+- cpy #0
+  beq +
+    asl a
+    asl this.tmp
+    dey
+    bra -
+
++
+  pha
+
+  lda this.tmp
+  eor.b #$ff
+  sta this.tmp
+
+  lda.b this.bitflag,x
+  and this.tmp
+  sta.b this.bitflag,x
+  
+  pla
+  ora.b this.bitflag,x
+  sta.b this.bitflag,x
+  rep #$31
+
+  plx
+  rts
+
+_computeChecksum:
+  php
+  sep #$20
+  pea 0
+  ldx #0
+-   lda this,x
+    clc
+    adc 1,s
+    sta 1,s
+    inx
+    cpx #PERSISTENCY.SLOT.LENGTH
+    bne -
+  pla
+  pla
+  plp
+  rts
+
+  CLASS persistency.slot get set load save
+
+.ends	
+	

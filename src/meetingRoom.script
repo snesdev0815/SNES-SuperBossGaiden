@@ -1,0 +1,184 @@
+/**
+* First cutscene at beginning of game
+*
+*/
+
+  SCRIPT meetingRoom
+
+  .redef obj.script.slave hashPtr.1
+  .redef obj.philomena hashPtr.2
+  .redef obj.fausto hashPtr.3
+  .redef obj.orkan hashPtr.4
+  .redef obj.trigger hashPtr.5
+
+	.redef obj.hud this._tmp
+	.redef obj.player this._tmp+4
+
+    SET_CUTSCENE_MANDATORY
+
+    lda.w #Song.intro.PTR
+    SCRIPT_JSR core.audio.playSong
+
+  	pea SPRITE.philomena.dummy.PTR
+  	pea BERZERK.FULL
+  	pea 0
+  	pea 0
+  	pei (dimension.position.y+1)
+  	pei (dimension.position.x+1)
+  	SCRIPT_NEW lifeform.npc.CLS.PTR obj.philomena
+  	pla
+  	pla
+  	pla
+  	pla
+  	pla
+  	pla
+
+  	pea SPRITE.fausto.dummy.PTR
+  	pea BERZERK.FULL
+  	pea 0
+  	pea 0
+  	pei (dimension.position.y+1)
+  	lda dimension.position.x+1
+  	clc
+  	adc.w #24
+  	pha
+  	SCRIPT_NEW lifeform.npc.CLS.PTR obj.fausto
+  	pla
+  	pla
+  	pla
+  	pla
+  	pla
+  	pla
+
+  	pea SPRITE.orkan.dummy.PTR
+  	pea BERZERK.FULL
+  	pea 0
+  	pea 0
+  	pei (dimension.position.y+1)
+  	lda dimension.position.x+1
+  	clc
+  	adc.w #24*2
+  	pha
+  	SCRIPT_NEW lifeform.npc.CLS.PTR obj.orkan
+  	pla
+  	pla
+  	pla
+  	pla
+  	pla
+  	pla
+
+	CUTSCENE_ACQUIRE_OBJECT lifeform.player.CLS.PTR obj.player
+	CUTSCENE_PAUSE_PLAYER
+
+
+	CUTSCENE_ACQUIRE_OBJECT background.hud.CLS.PTR obj.hud
+
+	;wait till fadeout has happpened
+	SAVE
+    ldx #obj.hud
+    SCRIPT_JSR core.object.isDisabled
+    bcc +
+    	rts
+
++
+    ldx #obj.hud
+    SCRIPT_JSR core.object.disable
+
+
+  CUTSCENE_WAIT
+
+	lda.w #:oncommand.skipCutscene.CLB
+	sta this.oncommand+2
+	lda.w #oncommand.skipCutscene.CLB
+	sta this.oncommand
+
+  pei (iterator.self)
+  pei (iterator.self+2)
+  SCRIPT_NEW script.command.callback.CLS.PTR obj.trigger SCRIPT.COMMAND.EXIT INPUT.DEVICE.ID.0 FALSE
+  pla
+  pla
+	
+	SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.sacredPlayStation FALSE
+	WAIT_FOR obj.script.slave
+
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.emulatedAlready text.dialogue.wha FALSE
+  WAIT_FOR obj.script.slave
+
+	SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.unlicensedGames FALSE
+	WAIT_FOR obj.script.slave
+
+  AUDIO_FADE AUDIO.VOLUME.MUTE
+
+  WAIT_AUDIO_FADE_COMPLETE
+
+  SCRIPT_JSR core.audio.stopSong
+	SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.kiddingMe text.dialogue.explicitOrders text.dialogue.youllPay FALSE
+	WAIT_FOR obj.script.slave
+
+_meetingRoomEnd:
+  lda.w #Song.rampage.PTR
+  SCRIPT_JSR core.audio.playSong
+
+  SCRIPT_CALL lifeform.player.oncommand.MTD obj.player LIFEFORM.COMMAND.BERZERK_RETURN BERZERK.FULL
+  EXPLOSION_BIG 144 336
+
+  SCRIPT_JSR iterator.library.reset
+-
+  lda.w #lifeform.staticCutscene.CLS.PTR
+  SCRIPT_JSR iterator.library.each.byId
+  bcc +
+    ;throw
+    pea LIFEFORM.ATTACK.NORMAL
+    SCRIPT_JSR core.random.get
+    and.w #$3f
+    clc
+    adc.w #MATH.225_DEG
+    pha
+    pea 6
+    pei (iterator.self)
+    pei (iterator.self + 2)
+    SCRIPT_CALL lifeform.library.oncommand.MTD iterator.target LIFEFORM.COMMAND.ATTACK
+    plx
+    plx
+    plx
+    pla
+    pla
+    bra -
+        
++
+
+	SCRIPT_TRY Script.kill.MTD obj.script.slave
+	SCRIPT_TRY script.command.callback.kill.MTD obj.trigger
+
+  HUD_ENABLE obj.hud
+
+	CUTSCENE_RESUME_PLAYER
+
+  SCRIPT_CALL lifeform.library.oncommand.MTD obj.player LIFEFORM.COMMAND.ORDER_ATTACK
+  
+	LOOP 10
+	LOOP
+  	SCRIPT_TRY lifeform.npc.oncommand.MTD obj.philomena LIFEFORM.COMMAND.JUMP
+
+	LOOP 10
+	LOOP
+  	SCRIPT_TRY lifeform.npc.oncommand.MTD obj.fausto LIFEFORM.COMMAND.JUMP
+
+	LOOP 10
+	LOOP
+  	SCRIPT_TRY lifeform.npc.oncommand.MTD obj.orkan LIFEFORM.COMMAND.JUMP
+
+	LOOP 30
+	LOOP
+
+	DIE
+  
+
+  CALLBACK oncommand.skipCutscene
+  lda OBJECT.CALL.ARG.1+3,s
+  cmp.w #SCRIPT.COMMAND.EXIT
+  bne +
+    SET_PC _meetingRoomEnd
+
++
+	rtl

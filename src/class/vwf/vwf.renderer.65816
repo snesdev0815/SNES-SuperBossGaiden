@@ -1,0 +1,622 @@
+/**
+* renders input textstring to tile
+*
+* @param 1<int, 16bit>  pointer to textstring in wram. must be preprocessed already
+* @param 2<int, 16bit>  font
+* @param 3<int, 16bit>  delay mask
+* @param 4<int, 16bit>  chars to print per frame, zero means instantaneous
+* @param 5<int, 16bit>  vram.target.start
+* @param 6<int, 16bit>  vram.target.length
+* @param 7,8<int, 32bit>  master delay object (wait with printing until that object is killed. usually, this contains the vwf renderer for the line above current line)
+*/
+
+.include "src/class/vwf/vwf.renderer.h"
+.section "vwf.renderer"
+
+vwf.renderer.init:
+  php
+  rep #$31
+  lda.w #:FONT.big_2bpp
+  ldx.w #FONT.big_2bpp
+  pea GLOBAL.vwfFontPacked & $ffff
+  pea GLOBAL.vwfFontPacked >> 16
+  jsr core.unpack.unpack
+  pla
+  pla
+  plp
+  rts
+
+
+  METHOD init
+  lda #RAM << 8
+  sta this.source.pointer+1
+  lda OBJECT.CALL.ARG.1,s
+  sta.b this.source.pointer
+
+  lda OBJECT.CALL.ARG.7,s
+  sta this.master+2
+  lda OBJECT.CALL.ARG.8,s
+  sta this.master
+
+  sep #$20
+  lda OBJECT.CALL.ARG.3,s
+  sta.b this.delay
+
+  lda OBJECT.CALL.ARG.4,s
+  sta.b this.charspeed
+  rep #$31
+
+  lda OBJECT.CALL.ARG.5,s
+  sta.b this.vram.target.start
+
+  lda OBJECT.CALL.ARG.6,s
+  sta.b this.vram.target.length
+
+  ;init some vars
+  jsr core.random.get
+  sep #$20
+  sta this.timer
+  rep #$31
+
+  lda.w #GLOBAL.vwfFontPacked
+  sta.b this.font.pointer
+  lda.w #GLOBAL.vwfFontPacked >> 8
+  sta.b this.font.pointer + 1
+
+  ;check header magic
+  ldy.w #VWF.MAGIC
+  lda.b [this.font.pointer], y
+  cmp.w #VWF.MAGIC.VALUE
+  beq +
+    TRIGGER_ERROR E_BadVwfFont
+
+  ;fetch config
++ 
+  ldy.w #VWF.BPP
+  lda.b [this.font.pointer], y
+  and.w #$ff
+  cmp #9
+  bcc +
+    TRIGGER_ERROR E_Todo
+
++  
+  sta.b this.bpp
+  stz.b this.char.current
+  stz.b this.state
+  stz.b this.wram.buffer.index
+
+  ldy.w #VWF.TILE_WIDTH
+  lda.b [this.font.pointer], y
+  ;get tile width
+  lsr a
+  lsr a
+  lsr a
+  and.w #$3
+  asl a
+  tax
+
+  lda this.bpp
+  ;bytes per tile
+  asl a
+  asl a
+  asl a
+
+  jsr (_tileWidthShift.lut,x)
+  sta this.wram.buffer.size
+
+  ldx this.wram.buffer.size
+  jsr core.wram.allocate
+  bcs +
+    pei (this.wram.buffer.size)
+    TRIGGER_ERROR E_OutOfWram
+
+
++ stx.b this.wram.buffer.start
+  sep #$20
+  sta.b this.wram.buffer.id
+  rep #$31
+
+  ;purge buffer
+  lda this.wram.buffer.start
+  clc
+  adc #GLOBAL.wramBuffer.start
+  tax
+  ;ldy #VWF.WRAM.BUFFER.LENGTH
+  ldy this.wram.buffer.size
+  lda #MEMORY_CLEAR.ZERO
+  jsr ClearWRAM
+
+  ;play once to enable instant same-frame rendering
+  jmp _play
+
+_tileWidthShift.lut:
+  .dw _shift.0
+  .dw _shift.8
+  .dw _shift.16
+  .dw _shift.32
+
+;16 tiles per char
+_shift.32:
+  asl a
+  asl a
+;4 tiles per char
+_shift.16:
+  asl a
+  ;one tile per char
+_shift.8:
+  ;one tile line
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+_shift.0:
+  rts
+
+  METHOD play
+  sep #$20
+  inc this.timer
+  rep #$31
+
+  ;don't print before it's our turn
+  ldx #this.master
+  jsr core.object.exists
+  bcs ++
+
+    lda this.state
+    cmp.w #VWF.STATE.MAX
+    bcc +
+      pha
+      TRIGGER_ERROR E_IndexError
+
++
+    asl a
+    tax
+    jmp (_vwf.state.lut,x)
+
+++
+  rts
+
+_vwf.state.lut:
+  .dw _render
+  .dw _wait
+  .dw _done
+  .dw _kill
+
+_wait:
+  AX16
+  lda this.busy
+  beq +
+    jmp _flushBuffer
+
++
+  lda.w #VWF.STATE.DONE
+  sta this.state
+  rts
+
+_abort:
+  AX16
+  lda.w #VWF.STATE.WAIT
+  sta this.state
+  pla
+  jmp _flushBuffer
+
+_render:
+  AX16
+  lda this.busy
+  beq +
+    jmp _flushBuffer
+
++
+  sep #$20
+  lda this.timer
+  and this.delay
+  rep #$31
+  beq +
+    ;holding a speeds up text rendering
+    ldx.w #INPUT.DEVICE.ID.0
+    jsr core.input.get.pressTrigger
+    tya
+    bit.w #JOY_BUTTON_A
+    bne +
+      rts
+
++
+  ;play soundeffect if this is a printable char and not whole string print-at-once
+  lda this.charspeed
+  and.w #$ff
+  beq +
+    lda this.char.current
+    asl a
+    tay
+    lda.b [this.source.pointer],y
+    cmp.w #$21
+    bcc +
+      lda.w #AUDIO.EFFECT.TEXTBOX
+      ldy.w #0  ;default vol
+      ldx.w #0  ;default pitch
+      jsr core.audio.playEffect
+
++
+  lda this.charspeed
+  and.w #$ff
+  pha
+
+-
+    lda this.char.current
+    asl a
+    tay
+    lda.b [this.source.pointer],y
+    ;done?
+    cmp.w #TC_end
+    beq _abort
+
+    ;done?
+    cmp.w #TC_brk
+    beq _abort
+
+    pha
+    tax
+    ldy.w #VWF.TILE_SIZE
+    lda.b [this.font.pointer], y
+    jsr core.math.mul.8bit
+
+    clc
+    adc.w #VWF.WIDTH_TABLE
+    clc
+    adc this.font.pointer
+    sta this.char.current.font.pointer
+
+    ldy.w #VWF.TILE_COUNT
+    lda.b [this.font.pointer], y
+    clc
+    adc this.char.current.font.pointer
+    sta this.char.current.font.pointer
+
+
+    sep #$20
+    lda this.font.pointer+2
+    sta this.char.current.font.pointer+2
+    rep #$31
+
+    ;get width config
+    lda 1,s
+    clc
+    adc.w #VWF.WIDTH_TABLE
+    tay
+    lda.b [this.font.pointer],y
+    and.w #VWF.WIDTH_TABLE.BREAKABLE ~$ff
+    sta this.char.current.width
+
+    plx
+
+    ldy.w #VWF.TILE_WIDTH   ;this is probably redundant, use 2 separate loops for 8x8/16x16
+    lda.b [this.font.pointer], y
+    and.w #$ff
+
+    ;lda this.tile.width
+    cmp #16
+    bne +
+      jsl extend.vwf.renderer.renderChar16x16
+      bra ++
+
++
+
+++
+    inc this.char.current
+
+    ;print whole string at once?
+    lda 1,s
+    beq -
+
+    ;draw as many chars per frame as requested
+    dec a
+    sta 1,s
+    bne -
+
+  pla
+  jmp _flushBuffer
+
+_shiftLUT.8x8:
+  .dw _shift8+7
+  .dw _shift8+6
+  .dw _shift8+5
+  .dw _shift8+4
+  .dw _shift8+3
+  .dw _shift8+2
+  .dw _shift8+1
+  .dw _shift8+0
+
+_shift8:
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  rts
+
+_flushBuffer:
+  AX16
+  ;wait until buffer can be safely uploaded
+  lda this.vram.target.length
+  jsr core.dma.check.length
+  bcs +
+    lda.w #TRUE
+    sta this.busy
+    rts
+
++
+  stz this.busy
+  tsx
+
+  lda this.wram.buffer.start
+  clc
+  adc #GLOBAL.wramBuffer.start
+  tay
+
+  sep #$20
+  lda #DMA_TRANSFER.VRAM    ;transfer type
+  pha
+  phy
+  lda.b #RAM       ;source bank
+  pha
+  rep #$31
+
+  pei (this.vram.target.start)
+  pei (this.vram.target.length)
+
+  jsr core.dma.registerTransfer
+  txs
+  rts
+
+_done:
+  lda.w #VWF.STATE.KILL
+  sta this.state
+  rts
+  
+
+  METHOD kill
+  lda.b this.wram.buffer.id
+  and.w #$ff
+  jsl extend.wram.deallocate
+  jmp object.library.kill
+
+
+  METHOD isDone
+  ;redundant, kill itself automatically when done
+  clc
+  rts
+  
+  CLASS vwf.renderer isDone
+.ends	
+
+
+.section "extend.vwf.renderer.16x16" superfree
+
+extend.vwf.renderer.renderChar16x16:
+  AX16
+  ;calculate shift count
+  lda this.wram.buffer.index
+  and.w #$7
+  sta this.buffer
+
+  lda this.bpp
+  asl a
+  asl a
+  asl a
+  ora this.buffer
+  asl a
+  tax
+  jsr (_renderChar16x16.lut,x)
+  rtl
+
+_renderChar16x16.lut:
+  .dw _renderChar16x16.invalid  ;0bpp
+  .dw _renderChar16x16.invalid  ;0bpp
+  .dw _renderChar16x16.invalid  ;0bpp
+  .dw _renderChar16x16.invalid  ;0bpp
+  .dw _renderChar16x16.invalid  ;0bpp
+  .dw _renderChar16x16.invalid  ;0bpp
+  .dw _renderChar16x16.invalid  ;0bpp
+  .dw _renderChar16x16.invalid  ;0bpp
+  .dw _renderChar16x16.invalid  ;1bpp
+  .dw _renderChar16x16.invalid  ;1bpp
+  .dw _renderChar16x16.invalid  ;1bpp
+  .dw _renderChar16x16.invalid  ;1bpp
+  .dw _renderChar16x16.invalid  ;1bpp
+  .dw _renderChar16x16.invalid  ;1bpp
+  .dw _renderChar16x16.invalid  ;1bpp
+  .dw _renderChar16x16.invalid  ;1bpp
+  .dw _renderChar16x16.2bpp.0 ;2bpp
+  .dw _renderChar16x16.2bpp.1 ;2bpp
+  .dw _renderChar16x16.2bpp.2 ;2bpp
+  .dw _renderChar16x16.2bpp.3 ;2bpp
+  .dw _renderChar16x16.2bpp.4 ;2bpp
+  .dw _renderChar16x16.2bpp.5 ;2bpp
+  .dw _renderChar16x16.2bpp.6 ;2bpp
+  .dw _renderChar16x16.2bpp.7 ;2bpp
+  .dw _renderChar16x16.invalid  ;3bpp
+  .dw _renderChar16x16.invalid  ;3bpp
+  .dw _renderChar16x16.invalid  ;3bpp
+  .dw _renderChar16x16.invalid  ;3bpp
+  .dw _renderChar16x16.invalid  ;3bpp
+  .dw _renderChar16x16.invalid  ;3bpp
+  .dw _renderChar16x16.invalid  ;3bpp
+  .dw _renderChar16x16.invalid  ;3bpp
+/*  
+  .dw _renderChar16x16.4bpp.0 ;4bpp
+  .dw _renderChar16x16.4bpp.1 ;4bpp
+  .dw _renderChar16x16.4bpp.2 ;4bpp
+  .dw _renderChar16x16.4bpp.3 ;4bpp
+  .dw _renderChar16x16.4bpp.4 ;4bpp
+  .dw _renderChar16x16.4bpp.5 ;4bpp
+  .dw _renderChar16x16.4bpp.6 ;4bpp
+  .dw _renderChar16x16.4bpp.7 ;4bpp
+*/  
+  .dw _renderChar16x16.invalid  ;5bpp
+  .dw _renderChar16x16.invalid  ;5bpp
+  .dw _renderChar16x16.invalid  ;5bpp
+  .dw _renderChar16x16.invalid  ;5bpp
+  .dw _renderChar16x16.invalid  ;5bpp
+  .dw _renderChar16x16.invalid  ;5bpp
+  .dw _renderChar16x16.invalid  ;5bpp
+  .dw _renderChar16x16.invalid  ;5bpp
+  .dw _renderChar16x16.invalid  ;6bpp
+  .dw _renderChar16x16.invalid  ;6bpp
+  .dw _renderChar16x16.invalid  ;6bpp
+  .dw _renderChar16x16.invalid  ;6bpp
+  .dw _renderChar16x16.invalid  ;6bpp
+  .dw _renderChar16x16.invalid  ;6bpp
+  .dw _renderChar16x16.invalid  ;6bpp
+  .dw _renderChar16x16.invalid  ;6bpp
+  .dw _renderChar16x16.invalid  ;7bpp
+  .dw _renderChar16x16.invalid  ;7bpp
+  .dw _renderChar16x16.invalid  ;7bpp
+  .dw _renderChar16x16.invalid  ;7bpp
+  .dw _renderChar16x16.invalid  ;7bpp
+  .dw _renderChar16x16.invalid  ;7bpp
+  .dw _renderChar16x16.invalid  ;7bpp
+  .dw _renderChar16x16.invalid  ;7bpp
+  .dw _renderChar16x16.invalid  ;8bpp
+  .dw _renderChar16x16.invalid  ;8bpp
+  .dw _renderChar16x16.invalid  ;8bpp
+  .dw _renderChar16x16.invalid  ;8bpp
+  .dw _renderChar16x16.invalid  ;8bpp
+  .dw _renderChar16x16.invalid  ;8bpp
+  .dw _renderChar16x16.invalid  ;8bpp
+  .dw _renderChar16x16.invalid  ;8bpp
+
+
+_renderChar16x16.invalid:
+  pei (this.bpp)
+  SCRIPT_TRIGGER_ERROR E_IndexError
+
+
+.macro RENDER_16X16_ITER
+    lda [this.char.current.font.pointer],y
+    and.w #$ff
+    beq +
+      xba
+
+      .rept SHIFT_COUNT
+      lsr a
+      .endr
+
+      sta this.buffer
+      and.w #$ff
+      ora.w (GLOBAL.wramBuffer.start&$ffff) + \1 + (BPP*8*\3),x
+      sta.w (GLOBAL.wramBuffer.start&$ffff) + \1 + (BPP*8*\3),x
+
+      lda this.buffer+1
+      and.w #$ff
+      ora.w (GLOBAL.wramBuffer.start&$ffff) + \1 + (BPP*8*\2),x
+      sta.w (GLOBAL.wramBuffer.start&$ffff) + \1 + (BPP*8*\2),x
+
++
+    iny
+.endm
+
+;writes letter tiles in order ul,ur,dl,dr
+.macro RENDER_SHIFT_BASE_16X16
+  ldy.w #0  ;index in font
+
+  lda this.wram.buffer.index
+  and.w #$7~$ffff
+  .rept BPP/2
+  asl a
+  .endr
+  asl a
+  
+  clc
+  adc this.wram.buffer.start
+  tax ;target index
+
+  phx
+  lda.w #BPP*8
+  sta this.counter
+-  
+    RENDER_16X16_ITER 0 0 2
+    inx
+    dec this.counter
+    bne -
+  plx
+
+  phx
+  lda.w #BPP*8
+  sta this.counter
+-  
+    RENDER_16X16_ITER 0 1 3
+    inx
+    dec this.counter
+    bne -
+  plx
+
+  lda this.char.current.width
+  cmp #8
+  bcs +
+    jmp ++
++
+
+  phx
+  lda.w #BPP*8
+  sta this.counter
+-  
+    RENDER_16X16_ITER 0 2 4
+    inx
+    dec this.counter
+    bne -
+  plx  
+  phx
+  lda.w #BPP*8
+  sta this.counter
+-  
+    RENDER_16X16_ITER 0 3 5
+    inx
+    dec this.counter
+    bne -
+  plx  
+++
+  lda this.wram.buffer.index
+  clc
+  adc this.char.current.width
+  sta this.wram.buffer.index  
+  rts
+
+.endm
+
+.redef BPP 2
+.redef SHIFT_COUNT 0
+_renderChar16x16.2bpp.0:
+  RENDER_SHIFT_BASE_16X16
+
+.redef SHIFT_COUNT 1
+_renderChar16x16.2bpp.1:
+  RENDER_SHIFT_BASE_16X16
+
+.redef SHIFT_COUNT 2
+_renderChar16x16.2bpp.2:
+  RENDER_SHIFT_BASE_16X16
+
+.redef SHIFT_COUNT 3
+_renderChar16x16.2bpp.3:
+  RENDER_SHIFT_BASE_16X16
+
+.redef SHIFT_COUNT 4
+_renderChar16x16.2bpp.4:
+  RENDER_SHIFT_BASE_16X16
+
+.redef SHIFT_COUNT 5
+_renderChar16x16.2bpp.5:
+  RENDER_SHIFT_BASE_16X16
+
+.redef SHIFT_COUNT 6
+_renderChar16x16.2bpp.6:
+  RENDER_SHIFT_BASE_16X16
+
+.redef SHIFT_COUNT 7
+_renderChar16x16.2bpp.7:
+  RENDER_SHIFT_BASE_16X16
+
+.ends

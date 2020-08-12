@@ -1,0 +1,192 @@
+/**
+* HDMA object that plays animation targetting mask window.
+*
+* Good for screen fade ins/outs and such.
+* 
+*/
+
+.include "src/class/hdma/hdma.windowMaskAnimation.h"
+.section "hdma.windowMaskAnimation"
+
+  /**
+   * @param 1<int, 16bit>  id of hdma animation
+   */
+  METHOD init
+  lda.w ANIMATION.FLAGS.IS_LOOPING
+  trb hdma.animation.flags
+
+  lda #hdma.void.CLB
+  sta this.callback
+
+  lda OBJECT.CALL.ARG.1,s
+  jsr hdma.library.startAnimation
+
+  sep #$20
+
+  lda hdma.flags
+  ora #DMAP_4_REG_WRITE_ONCE
+  sta hdma.flags
+
+  lda #W1L & $ff
+  sta hdma.target
+
+  jsr _bufferScreen
+
+  rep #$31  
+  jmp hdma.library.start
+
+_setScreen:
+  AX16
+  php
+  sep #$20
+  ;enable window masking on bg1,2, backdrop color, color window
+  lda #(W12SEL_BG2_W1_ENABLE | W12SEL_BG1_W1_ENABLE | W12SEL_BG2_W2_ENABLE | W12SEL_BG1_W2_ENABLE)
+  sta.w window12Sel
+
+  lda #(W34SEL_BG3_W1_ENABLE | W34SEL_BG3_W2_ENABLE)
+  sta.w window34Sel
+
+  lda #(WOBJSEL_COL_W2_ENABLE | WOBJSEL_COL_W1_ENABLE | WOBJSEL_OBJ_W2_ENABLE | WOBJSEL_OBJ_W1_ENABLE)
+  sta.w windowObjSel
+
+  lda #(T_BG1_ENABLE | T_BG2_ENABLE | T_BG3_ENABLE | T_OBJ_ENABLE)
+  sta.w windowMainscreen
+  sta.w windowSubscreen
+
+  lda #(WBGLOG_BG1_XNOR | WBGLOG_BG2_XNOR | WBGLOG_BG3_XNOR)
+  sta.w windowBGLogic
+
+  lda #(WOBJLOG_COL_XNOR | WOBJLOG_OBJ_XNOR)
+  sta.w windowObjLogic
+
+  lda.w colorAdditionSelect
+  and #(CGWSEL_CLIP_COL_ALWAYS | CGWSEL_NO_COL_MATH_ALWAYS) ~$ff
+  ora #(CGWSEL_CLIP_COL_INSIDE | CGWSEL_NO_COL_MATH_INSIDE)
+  sta.w colorAdditionSelect
+  plp
+  rts
+
+_bufferScreen:
+  php
+
+  sep #$20
+  ;buffer changed regs
+  lda.w window12Sel
+  sta this.buffer.window12Sel
+  lda.w window34Sel
+  sta this.buffer.window34Sel
+  lda.w windowObjSel
+  sta this.buffer.windowObjSel
+  lda.w windowMainscreen
+  sta this.buffer.windowMainscreen
+  lda.w windowSubscreen
+  sta this.buffer.windowSubscreen
+
+  lda.w windowBGLogic
+  sta this.buffer.windowBgLogic
+  lda.w windowObjLogic
+  sta this.buffer.windowObjLogic
+
+  lda.w colorAdditionSelect
+  sta this.buffer.cgwsel
+
+  plp
+  rts
+
+_restoreScreen:
+  php
+  sep #$20
+  ;revert changed registers immediately
+  lda this.buffer.window12Sel
+  sta.w window12Sel
+  sta.l W12SEL
+  lda this.buffer.window34Sel
+  sta.w window34Sel
+  sta.l W34SEL
+  lda this.buffer.windowObjSel  
+  sta.w windowObjSel
+  sta.l WOBJSEL
+  lda this.buffer.windowMainscreen
+  sta.w windowMainscreen
+  sta.l TMW
+  lda this.buffer.windowSubscreen
+  sta.w windowSubscreen
+  sta.l TSW
+  lda this.buffer.windowBgLogic
+  sta.w windowBGLogic
+  sta.l WBGLOG
+  lda this.buffer.windowObjLogic
+  sta.w windowObjLogic
+  sta.l WOBJLOG
+
+  lda this.buffer.cgwsel
+  sta.w colorAdditionSelect
+  sta.l CGWSEL
+
+
+  plp
+  rts
+
+  METHOD play
+  jsr hdma.library.playAnimation
+  lda hdma.animation.flags
+  bit.w #ANIMATION.FLAGS.IS_PLAYING
+  bne +
+    ldx this.callback
+    jsr core.callback.execute
+    jmp _kill
+
++
+  ;dont do this on init, but only on active play. Else, we tend to get single frame flicker glitches.
+  jmp _setScreen
+
+  METHOD stop
+  jmp hdma.library.stopAnimation
+
+  METHOD getFrame
+  lda hdma.animation.frame.current
+  rts
+
+  METHOD isDone
+  jmp hdma.library.isDone
+
+
+  METHOD setFrame
+  lda OBJECT.CALL.ARG.1,s
+  sta hdma.animation.frame.current
+  rts
+
+  METHOD kill
+  jsr _restoreScreen
+  jmp hdma.library.kill
+
+  METHOD disable
+  jsr _restoreScreen
+  jmp hdma.library.disable
+
+  METHOD enable
+  jsr _bufferScreen
+  jmp hdma.library.enable
+
+  METHOD setCallback
+  lda OBJECT.CALL.ARG.1,s
+  sta this.callback
+  rts
+
+  CALLBACK hdma.void
+  rts
+
+  CALLBACK hdma.blackScreen
+  lda.w #hdma.brightness.CLS.PTR
+  jsr iterator.library.kill.byId
+  
+  SCRIPT_NEW Brightness.CLS.PTR this.brightness
+  lda #BRIGHTNESS.NONE
+  SCRIPT_CALL Brightness.set.MTD this.brightness
+  lda.w ScreenBrightness
+  sta.l INIDSP
+  rts
+
+  CLASS hdma.windowMaskAnimation stop setFrame getFrame isDone setCallback
+.ends	
+	

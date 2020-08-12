@@ -1,0 +1,334 @@
+/**
+* Main game mode handler.
+*
+* Sets up screen mode, instanciates level, checks for player instanciation and life lost/game over.
+*
+*/
+
+  SCRIPT game
+
+  .redef obj.level hashPtr.1
+  .redef obj.hdma.window hashPtr.2
+  .redef obj.hud hashPtr.3
+  .redef obj.bgcolor hashPtr.4
+  .redef obj.sprite.hit hashPtr.5
+  .redef obj.sprite.smoke hashPtr.6
+  .redef obj.sprite.explosion.round hashPtr.7
+  .redef obj.sprite.explosion.dust hashPtr.8
+
+  .redef obj.brightness this._tmp
+  .redef obj.sprite.dust this._tmp+4
+  .redef obj.sprite.berzerk this._tmp+8
+  .redef obj.sprite.combo this._tmp+12
+
+
+
+  .redef obj.player script.args
+  .redef obj.disk_kun script.args+4
+  .redef obj.parabo script.args+8
+  .redef obj.persistency script.args+12
+
+  
+  .redef player_enable.1 this._tmp+16
+  .redef player_enable.2 this._tmp+18
+
+sdagfasdg:
+  stz player_enable.1
+  stz player_enable.2
+
+  SCRIPT_NEW Brightness.CLS.PTR obj.brightness
+  lda #BRIGHTNESS.NONE
+  SCRIPT_CALL Brightness.set.MTD obj.brightness
+  
+  SCRIPT_NEW palette.bgcolor.CLS.PTR obj.bgcolor PALETTE.black.PTR 1
+
+  lda.w #VOID
+  sta obj.disk_kun
+  sta obj.parabo
+
+  ;debounce
+  SLEEP 3
+  
+  ;set screen mode
+  sep #$20
+  lda #(T_BG1_ENABLE | T_BG2_ENABLE | T_BG3_ENABLE | T_OBJ_ENABLE)
+  sta.w windowMainscreen
+  sta.w windowSubscreen
+
+  stz.w FixedColourR
+  stz.w FixedColourG
+  stz.w FixedColourB
+  rep #$31
+
+
+  SCRIPT_NEW persistency.slot.CLS.PTR obj.persistency
+
+
+/*
+  dummy sprites, minimizes reallocation
+*/
+  SCRIPT_NEW sprite.dummy.CLS.PTR obj.sprite.hit SPRITE.smash.PTR
+  SCRIPT_NEW sprite.dummy.CLS.PTR obj.sprite.smoke SPRITE.smoke.PTR
+  SCRIPT_NEW sprite.dummy.CLS.PTR obj.sprite.explosion.round SPRITE.explosion.round.PTR
+  SCRIPT_NEW sprite.dummy.CLS.PTR obj.sprite.explosion.dust SPRITE.explosion.dust.PTR
+  SCRIPT_NEW sprite.dummy.CLS.PTR obj.sprite.dust SPRITE.dust.PTR
+  SCRIPT_NEW sprite.dummy.CLS.PTR obj.sprite.berzerk SPRITE.berzerk.return.PTR
+  SCRIPT_NEW sprite.dummy.CLS.PTR obj.sprite.combo SPRITE.combo_ready.PTR
+
+  stz.w GLOBAL.level.bitflags
+  stz.w GLOBAL.killCount
+  stz.w GLOBAL.gotHitCount
+  
+  SCRIPT_NEW background.hud.CLS.PTR obj.hud
+-
+
+  ;stupid hack
+  lda script.args
+  asl a
+  tax
+  lda.l _level.dialogueState,x
+  sta.w GLOBAL.dialogueState
+  
+  pei (script.args)
+  SCRIPT_NEW level.generic.CLS.PTR obj.level
+  pla
+
+  lda #BRIGHTNESS.FULL
+  SCRIPT_CALL Brightness.fadeTo.MTD obj.brightness
+
+  SCRIPT_NEW hdma.windowMaskAnimation.CLS.PTR obj.hdma.window HDMA.fade_in.PTR
+  SAVE
+  WAIT_FOR obj.hdma.window
+
+  CUTSCENE_ACQUIRE_OBJECT lifeform.player.CLS.PTR obj.player
+
+  SAVE
+  lda.w FrameCounter
+  inc a
+  inc a
+  and.w #$1f
+  bne +  
+    ;kill self if player no present anymore
+    ldx.w #obj.player
+    SCRIPT_JSR core.object.exists
+    bcs +
+      jmp _player_dead
+
++
+
+  lda.w FrameCounter
+  and.w #$1f
+  bne +
+    lda player_enable.1
+    bne +
+
+    ;don't instanciate sidekicks if player paused (e.g. during cutscene, in pause mode etc.)
+    ldx #obj.player
+    SCRIPT_JSR core.object.isPaused
+    bcs +
+
+    pea (FLAG.PERSISTENT.PLAYER_ENABLE.1 << 8) | PERSISTENCY.SLOT.BITFLAG
+    SCRIPT_CALL persistency.slot.get.MTD obj.persistency
+    sta player_enable.1
+    pla
+
+    lda player_enable.1
+    beq +
+
+    pei (player_enable.1)
+    ldx.w #obj.disk_kun
+    SCRIPT_JSR core.object.exists
+    bcc ++
+      lda.w #HUD.SIDEKICK.STATE.ON
+      sta 1,s
+++
+    pea INPUT.DEVICE.ID.1
+    SCRIPT_CALL background.hud.setPlayerState.MTD obj.hud
+    pla
+    pla
++
+
+  lda.w FrameCounter
+  inc a
+  and.w #$1f
+  bne +
+    lda player_enable.2
+    bne +
+
+    ;don't instanciate sidekicks if player paused (e.g. during cutscene, in pause mode etc.)
+    ldx #obj.player
+    SCRIPT_JSR core.object.isPaused
+    bcs +
+
+    pea (FLAG.PERSISTENT.PLAYER_ENABLE.2 << 8) | PERSISTENCY.SLOT.BITFLAG
+    SCRIPT_CALL persistency.slot.get.MTD obj.persistency
+    sta player_enable.2
+    pla
+
+    lda player_enable.2
+    beq +
+
+    pei (player_enable.2)
+    ldx.w #obj.parabo
+    SCRIPT_JSR core.object.exists
+    bcc ++
+      lda.w #HUD.SIDEKICK.STATE.ON
+      sta 1,s
+++
+    pea INPUT.DEVICE.ID.2
+    SCRIPT_CALL background.hud.setPlayerState.MTD obj.hud
+    pla
+    pla
+
++  
+  ;instanciate sidekicks if applicable
+  ;disk kun
+  ldx.w #INPUT.DEVICE.ID.1
+  SCRIPT_JSR core.input.get.trigger
+  bit.w #JOY_BUTTON_START
+  beq +
+    lda player_enable.1
+    and.w #$ff
+    beq +
+      ldx.w #obj.disk_kun
+      SCRIPT_JSR core.object.exists
+      bcs +
+        ;don't instanciate sidekicks if player paused or not existant (e.g. during cutscene, in pause mode etc.)
+        ldx.w #obj.player
+        SCRIPT_JSR core.object.exists
+        bcc +
+          ldx #obj.player
+          SCRIPT_JSR core.object.isPaused
+          bcs +
+            ldx.w #INPUT.DEVICE.ID.1
+            lda.w #JOY_BUTTON_START
+            SCRIPT_JSR core.input.clear.trigger
+
+            SCRIPT_CALL lifeform.library.getCollisionBasepoint.MTD obj.player
+            pea SPRITE.disk_kun.dummy.PTR
+            pea INPUT.DEVICE.ID.1
+            pea 0
+            pea 0
+            phy
+            phx
+            SCRIPT_NEW_TRY lifeform.sidekick.CLS.PTR obj.disk_kun
+            pla
+            pla
+            pla
+            pla
+            pla
+            pla
+
++
+  ;parabo
+  ldx.w #INPUT.DEVICE.ID.2
+  SCRIPT_JSR core.input.get.trigger
+  bit.w #JOY_BUTTON_START
+  beq +  
+    lda player_enable.2
+    and.w #$ff
+    beq +
+      ldx.w #obj.parabo
+      SCRIPT_JSR core.object.exists
+      bcs +
+        ;don't instanciate sidekicks if player paused (e.g. during cutscene, in pause mode etc.)
+        ldx.w #obj.player
+        SCRIPT_JSR core.object.exists
+        bcc +        
+          ldx #obj.player
+          SCRIPT_JSR core.object.isPaused
+          bcs +
+            ldx.w #INPUT.DEVICE.ID.2
+            lda.w #JOY_BUTTON_START
+            SCRIPT_JSR core.input.clear.trigger
+            
+            SCRIPT_CALL lifeform.library.getCollisionBasepoint.MTD obj.player
+            pea SPRITE.parabo.dummy.PTR
+            pea INPUT.DEVICE.ID.2
+            pea 0
+            pea 0
+            phy
+            phx
+            SCRIPT_NEW_TRY lifeform.sidekick.CLS.PTR obj.parabo
+            pla
+            pla
+            pla
+            pla
+            pla
+            pla
+
++
+  rts
+
+
+_player_dead:
+  CUTSCENE_WAIT_LONG
+  CUTSCENE_WAIT_LONG
+
+  ;kill sidekicks
+  SCRIPT_TRY lifeform.library.kill.MTD obj.disk_kun
+  SCRIPT_TRY lifeform.library.kill.MTD obj.parabo
+
+  SAVE
+  SCRIPT_JSR iterator.library.reset
+
+  ;wait for remaining cutscenes to finish
+  lda.w #OBJECT.PROPERTIES.isCutscene
+  SCRIPT_JSR iterator.library.others
+  bcc +
+    rts
+
++
+  SAVE
+
+  ;level object might have changed in mean time
+  CUTSCENE_ACQUIRE_OBJECT level.generic.CLS.PTR obj.level
+  SCRIPT_CALL level.generic.getId.MTD obj.level
+  sta script.args
+
+  AUDIO_FADE AUDIO.VOLUME.MUTE
+  
+  SCRIPT_NEW hdma.windowMaskAnimation.CLS.PTR obj.hdma.window HDMA.fade_out.PTR
+  SCRIPT_CALL hdma.windowMaskAnimation.setCallback.MTD obj.hdma.window hdma.blackScreen.CLB
+
+  WAIT_FOR obj.hdma.window
+
+  WAIT_AUDIO_FADE_COMPLETE 
+  SCRIPT_JSR core.audio.stopSong
+  
+  SCRIPT_CALL level.generic.kill.MTD obj.level
+
+  CUTSCENE_KILL_ENEMIES_AND_BOSSES
+
+  lda.w #OBJECT.PROPERTIES.isSprite
+  SCRIPT_JSR iterator.library.kill.byProperties
+
+  ;restart current level or goto ending
+  lda.w GLOBAL.dialogueState
+  cmp.w #DIALOGUE.STATE.GAME_BEATEN
+  beq +
+    jmp -
+
++    
+
+  lda.w #1
+  pea (FLAG.PERSISTENT.GAME_BEATEN << 8) | PERSISTENCY.SLOT.BITFLAG
+  SCRIPT_CALL persistency.slot.set.MTD obj.persistency
+  pla
+
+  lda.w #SAVE_SLOT.DEFAULT
+  SCRIPT_CALL persistency.slot.save.MTD obj.persistency
+
+  SCRIPT_CALL sprite.library.kill.MTD this._tmp+4
+  SCRIPT_CALL sprite.library.kill.MTD this._tmp+8
+  SCRIPT_CALL sprite.library.kill.MTD this._tmp+12
+  DIE
+
+_level.dialogueState:
+  .dw DIALOGUE.STATE.CONCERNED ;level.sony_hq_1
+  .dw DIALOGUE.STATE.VENGEANCE ;level.sony_hq_2
+  .dw DIALOGUE.STATE.VENGEANCE ;level.sony_hq_3
+  .dw DIALOGUE.STATE.GHOST ;level.escape
+  .dw DIALOGUE.STATE.GHOST ;level.ending
+  .dw DIALOGUE.STATE.VENGEANCE ;level.secret_disk_kun
+  .dw DIALOGUE.STATE.VENGEANCE ;level.secret_parabo

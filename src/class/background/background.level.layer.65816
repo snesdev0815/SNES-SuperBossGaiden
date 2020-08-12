@@ -1,0 +1,786 @@
+/**
+* A background layer that displays a level map layer.
+* Automatically updates position relative to screen.
+*
+* @param 1<int, 32bit>  pointer to metamap
+* @param 3<int, 16bit>  tilemap pointer
+* @param 4<int, 16bit>  layer pixel size x
+* @param 5<int, 16bit>  layer pixel size y
+* @param 6<int, 16bit>  palette start id
+* @param 7<int, 16bit>  tileset vram start adress
+* @param 8<int, 8bit lo>  bg layer id
+* @param 8<int, 8bit hi>  scroll factor
+*/
+.include "src/class/background/background.level.layer.h"
+.section "background.level.layer"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.8,s
+  and.w #$ff
+  sta.b this.bg
+
+  lda OBJECT.CALL.ARG.9,s
+  sta animation.flags.static
+
+  lda OBJECT.CALL.ARG.1,s
+  sta this.metamap.layer.pointer
+
+  lda OBJECT.CALL.ARG.2,s
+  sta this.tilemap.pointer
+
+  lda OBJECT.CALL.ARG.3,s
+  sep #$20
+  sta this.tilemap.pointer+2
+  xba
+  sta this.metamap.layer.pointer+2
+  rep #$31
+
+  lda OBJECT.CALL.ARG.4,s
+  sta dimension.size.x
+
+  lda OBJECT.CALL.ARG.5,s
+  sta dimension.size.y
+
+  lda OBJECT.CALL.ARG.6,s
+  clc
+  adc.w #1
+  xba
+  and.w #TILEMAP.BITFLAG.PALETTE
+  sta this.tile.config
+
+  lda OBJECT.CALL.ARG.7,s
+  sta.b animation.tiles.start
+
+  lda OBJECT.CALL.ARG.8,s
+  xba
+  and.w #$ff
+  sta.b this.scrollfactor
+
+  lda.w #BG.TILEMAP.SCROLL.LENGTH
+  sta.b animation.tilemap.length
+
+  jsr _allocateMemory
+
+  jsr _updateScreenPosition
+  jsr _updateScroll
+  jsr _updateTilemap.screen
+  jmp _makePhysical
+
+_allocateMemory:
+  AX16
+
+  ;allocate tilemap vram
+  ldy.w #0
+  ;double length, hor and vert buffer.
+  ldx.b animation.tilemap.length
+  lda.w #TILEMAP.GRANULARITY
+
+  jsr core.vram.allocate
+  bcs +
+    pei (animation.tilemap.length)
+    TRIGGER_ERROR E_OutOfVram
+
++ stx.b animation.tilemap.start
+  sep #$20
+  sta.b animation.tilemap.id
+  rep #$31
+
+  ;allocate wram buffer for tilemap upload
+  lda.b animation.tilemap.length
+  ldx.w #BACKGROUND.WRAM.LENGTH
+  stx.b background.ramBuffer.length
+
+  jsr core.wram.allocate
+  bcs +
+    pei (animation.tilemap.length)
+    TRIGGER_ERROR E_OutOfWram
+
+
++ stx.b background.ramBuffer.start
+  sep #$20
+  sta.b background.ramBuffer.id
+  rep #$31
+  rts
+  
+  METHOD play
+  jsr _updateScreenPosition
+
+  pea 0
+  lda this.tile.current.x
+  cmp this.tile.last.x
+  beq +
+    ;carry set: right
+    lda 1,s
+    adc.w #1
+    sta 1,s
+
+    lda this.tile.current.x
+    sec
+    sbc this.tile.last.x
+    jsr core.math.abs
+    cmp.w #2
+    bcc +
+      lda.w #$10
+      sta 1,s
+
++
+  lda this.tile.current.y
+  cmp this.tile.last.y
+  beq +
+    ;carry set: down
+    lda.w #0
+    adc.w #1
+    asl a
+    asl a
+    ora 1,s
+    sta 1,s
+
+    lda this.tile.current.y
+    sec
+    sbc this.tile.last.y
+    jsr core.math.abs
+    cmp.w #2
+    bcc +
+      lda.w #$10
+      sta 1,s
+
++
+  pla
+  asl a
+  tax
+  jsr (_move.lut,x)
+
+  jmp _updateScroll
+
+_move.lut:
+  .dw _move.void
+  .dw _move.left
+  .dw _move.right
+  .dw _move.void
+
+  .dw _move.up
+  .dw _move.upleft
+  .dw _move.upright
+  .dw _move.void
+
+  .dw _move.down
+  .dw _move.downleft
+  .dw _move.downright
+  .dw _move.void
+
+  .dw _move.void
+  .dw _move.void
+  .dw _move.void
+  .dw _move.void
+
+  .dw _move.screen
+  .dw _move.screen
+  .dw _move.screen
+  .dw _move.screen
+
+  .dw _move.screen
+  .dw _move.screen
+  .dw _move.screen
+  .dw _move.screen
+
+  .dw _move.screen
+  .dw _move.screen
+  .dw _move.screen
+  .dw _move.screen
+
+  .dw _move.screen
+  .dw _move.screen
+  .dw _move.screen
+  .dw _move.screen
+      
+_move.void:
+  rts
+
+_move.screen:
+  jmp _updateTilemap.screen
+
+_move.upleft:
+  jsr _move.up
+  jmp _move.left
+
+_move.upright:
+  jsr _move.up
+  jmp _move.right
+
+_move.downleft:
+  jsr _move.down
+  jmp _move.left
+
+_move.downright:
+  jsr _move.down
+  jmp _move.right
+
+_move.left:
+  AX16
+  lda this.tile.current.y
+  sta this.pos.y
+  lda this.tile.current.x
+  sta this.pos.x
+
+  jsl extern.drawLine.vertical
+  jmp _uploadLine.vertical
+
+_move.right:
+  AX16
+  lda this.tile.current.y
+  sta this.pos.y
+  lda this.tile.current.x
+  clc
+  adc.w #BACKGROUND.DRAW.WIDTH-1
+  sta this.pos.x
+
+  jsl extern.drawLine.vertical
+  jmp _uploadLine.vertical
+
+
+_move.up:
+  AX16
+  lda this.tile.current.y
+  sta this.pos.y
+  lda this.tile.current.x
+  sta this.pos.x
+
+  jsl extern.drawLine.horizontal
+
+  jmp _uploadLine.horizontal
+
+_move.down:
+  AX16
+  lda this.tile.current.y
+  clc
+  adc.w #BACKGROUND.GENERIC.TILESIZE.Y-1
+  sta this.pos.y
+  lda this.tile.current.x
+  sta this.pos.x
+
+  jsl extern.drawLine.horizontal
+
+_uploadLine.horizontal:
+  tsx
+  ;lower map part
+  lda.w #(GLOBAL.wramBuffer.start&$ffff)+BACKGROUND.LINE.HORIZONTAL
+  clc
+  adc background.ramBuffer.start
+  tay
+  ;transfer type
+  sep #$20
+  lda #DMA_TRANSFER.VRAM
+  pha
+  ;transfer source adress
+  phy
+  lda.b #RAM        ;source bank
+  pha
+  rep #$31
+  pei (this.pos.layer)
+  ;transfer length
+  pea TILEMAP.SIZE.X*TILEMAP.ENTRY.SIZE
+  jsr core.dma.registerTransfer
+
+  ;upper map part
+  lda.w #(GLOBAL.wramBuffer.start&$ffff)+BACKGROUND.LINE.HORIZONTAL+BACKGROUND.LINE.LENGTH
+  clc
+  adc background.ramBuffer.start
+  tay
+  ;transfer type
+  sep #$20
+  lda #DMA_TRANSFER.VRAM
+  pha
+  ;transfer source adress
+  phy
+  lda.b #RAM        ;source bank
+  pha
+  rep #$31
+  lda this.pos.layer
+  clc
+  adc.w #$800
+  pha
+  ;transfer length
+  pea TILEMAP.SIZE.X*TILEMAP.ENTRY.SIZE
+  jsr core.dma.registerTransfer    
+  txs  
+  rts
+
+_uploadLine.vertical:
+  tsx
+  lda.w #(GLOBAL.wramBuffer.start&$ffff) + BACKGROUND.LINE.VERTICAL
+  clc
+  adc background.ramBuffer.start
+  tay
+  ;transfer type
+  sep #$20
+  lda #DMA_TRANSFER.VRAM.TILELINE.VERTICAL
+  pha
+  ;transfer source adress
+  phy
+  lda.b #RAM        ;source bank
+  pha
+  rep #$31
+  pei (this.pos.layer)
+  ;transfer length
+  pea TILEMAP.SIZE.Y*TILEMAP.ENTRY.SIZE
+  jsr core.dma.registerTransfer
+  txs  
+  rts
+
+  METHOD kill
+  lda.b this.bg
+  jmp background.library.kill
+
+
+/**
+* update bg scroll registers at sub-tile levels
+*/
+_updateScroll:
+  AX16
+
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.IS_HIDDEN
+  bne ++
+    lda this.bg
+    asl a
+    asl a
+    tax
+    lda.b this.screen.current.x
+    and.w #(BACKGROUND.GENERIC.TILESIZE.X * TILE.SIZE.X) -1
+
+    clc
+    adc.w GLOBAL.screen.shake.offset.x
+    sta.w xScrollBG1,x
+    lda.b this.screen.current.y
+    and.w #(BACKGROUND.GENERIC.TILESIZE.Y * TILE.SIZE.Y) -1
+    sta.w yScrollBG1,x
+
+++
+  rts
+
+/**
+* calculate current position relative to screen
+*/
+_updateScreenPosition:
+  AX16
+
+  ;update last position buffer
+  lda.b this.tile.current.x
+  sta.b this.tile.last.x
+
+  lda.b this.tile.current.y
+  sta.b this.tile.last.y
+
+  ;get current pixel position relative to screen
+  lda.w (GLOBAL.screen.position.x &$ffff) +1
+  jsr _applyScrollFactor
+
+  sec
+  sbc.b dimension.position.x +1  
+  sta.b this.screen.current.x
+  lsr a
+  lsr a
+  lsr a
+  sta this.tile.current.x
+
+  lda.w (GLOBAL.screen.position.y &$ffff) +1
+  jsr _applyScrollFactor
+
+  sec
+  sbc.b dimension.position.y +1
+.if IS_3D == 1  
+  sec
+  sbc.b dimension.position.z + 1 
+.endif  
+  sta.b this.screen.current.y
+  lsr a
+  lsr a
+  lsr a
+  sta this.tile.current.y
+  rts
+
+_applyScrollFactor:
+  AX16
+  ldx this.scrollfactor
+  cpx.w #$80
+  bcs _negative
+
+-
+  cpx.w #0
+  beq +
+    dex
+    lsr a
+    bra -
+
++
+  rts  
+
+_negative:
+-
+  cpx.w #$100
+  bcs +
+    inx
+    asl a
+    bra -
+
++
+  rts  
+
+
+/**
+* source space: 16 h-metatiles(word-sized, contain 16 tiles each) x 256 v-metatiles
+*   -source meta: ((this.screen.current.y/TILE.SIZE.Y)*((LEVEL.SIZE.X/METATILE.SIZE.X))+((this.screen.current.x/METATILE.SIZE.X))*2)
+* target space: 2x 32x32 tilemaps(word-sized), horz
+*   -target_tilemap: (((this.screen.current.y/TILE.SIZE.Y) & TILEMAP.SIZE.Y-1)*(BACKGROUND.GENERIC.TILESIZE.X/2*2))+(((this.screen.current.x/TILE.SIZE.X)&BACKGROUND.GENERIC.TILESIZE.X/2-1)*2)+((this.screen.current.x/TILE.SIZE.X & BACKGROUND.GENERIC.TILESIZE.X/2)*$800)
+*   -target tilemap selection(upper/lower) in vram transfer: bit5 <<6
+* target h-scroll:
+* target v-scroll:
+*/
+_updateTilemap.screen:
+  AX16
+  lda.w #BACKGROUND.GENERIC.TILESIZE.Y
+  sta this.count.line
+
+  lda this.tile.current.y
+  sta this.pos.y
+
+  lda this.tile.current.x
+  sta this.pos.x
+
+-
+
+    jsl extern.drawLine.horizontal
+
+    tsx
+    ;lower map part
+    lda.w #(GLOBAL.wramBuffer.start&$ffff)+BACKGROUND.LINE.HORIZONTAL
+    clc
+    adc background.ramBuffer.start
+    tay
+    ;transfer type
+    sep #$20
+    lda #DMA_TRANSFER.VRAM
+    pha
+    ;transfer source adress
+    phy
+    lda.b #RAM        ;source bank
+    pha
+    rep #$31
+    pei (this.pos.layer)
+    ;transfer length
+    pea TILEMAP.SIZE.X*TILEMAP.ENTRY.SIZE
+    jsr core.dma.immediateTransfer
+
+    ;upper map part
+    lda.w #(GLOBAL.wramBuffer.start&$ffff)+BACKGROUND.LINE.HORIZONTAL+BACKGROUND.LINE.LENGTH
+    clc
+    adc background.ramBuffer.start
+    tay
+    ;transfer type
+    sep #$20
+    lda #DMA_TRANSFER.VRAM
+    pha
+    ;transfer source adress
+    phy
+    lda.b #RAM        ;source bank
+    pha
+    rep #$31
+    lda this.pos.layer
+    clc
+    adc.w #$800
+    pha
+    ;transfer length
+    pea TILEMAP.SIZE.X*TILEMAP.ENTRY.SIZE
+    jsr core.dma.immediateTransfer    
+    txs
+
+    ;advance to next line
+    inc this.pos.y
+    dec this.count.line
+    beq +
+      jmp -
+
++    
+  rts
+
+  METHOD disable
+  lda.b this.bg
+  jsr background.library.makeVirtual
+  jmp background.library.deallocate
+
+_makePhysical:
+  AX16
+  ;extremely bad hack, bg tilemap size settings depends on dimension.size!
+  pei (dimension.size.y)
+  pei (dimension.size.x)
+
+  lda.w #BACKGROUND.GENERIC.TILESIZE.X*TILE.SIZE.X
+  sta dimension.size.x
+  lda.w #BACKGROUND.GENERIC.TILESIZE.Y*TILE.SIZE.Y
+  sta dimension.size.y
+
+  lda.b this.bg
+  jsr background.library.makePhysical
+
+  pla
+  sta dimension.size.x
+  pla
+  sta dimension.size.y
+  rts
+
+  METHOD enable
+  jsr _allocateMemory
+
+  jsr _updateScreenPosition
+  jsr _updateScroll
+  jsr _updateTilemap.screen
+  jmp _makePhysical
+
+  METHOD getBgId
+  lda this.bg
+  rts
+
+  METHOD hide
+  lda.b this.bg
+  jmp background.library.makeVirtual
+
+  METHOD show
+  jmp _makePhysical
+  
+  ;custom
+ METHOD setPosition
+  lda OBJECT.CALL.ARG.1,s
+  stz.b dimension.position.x
+  sta.b dimension.position.x + 1
+
+  lda OBJECT.CALL.ARG.2,s
+  stz.b dimension.position.y  
+  sta.b dimension.position.y + 1
+  rts
+
+  CLASS background.level.layer getBgId hide show
+.ends	
+
+.base BSL
+.bank BANK.DATA
+.section "extern.background.layer" superfree
+
+.macro BACKGROUND_UPLOAD_TABLE
+  .dw \@*2  ;tableLo start
+  .dw (BACKGROUND.DRAW.WIDTH*2)-(\@*2)  ;tableLo length
+.endm
+
+/**
+  @expect this.pos.x,this.pos.y: tile position of row to draw
+  @expect this.tile.config: tile configuration to draw row with (palette, tile offset etc)
+  @out this.pos.layer: target position of row in linear 64x32 tilemap
+*/
+extern.drawLine.horizontal:
+  AX16
+  ;line setup
+  lda this.pos.x
+  sta this.count.tile
+
+  lda.w #$ffff
+  sta this.meta.current
+
+.rept BACKGROUND.DRAW.WIDTH
+    ;source layer pointer
+    ldy this.pos.layer
+    lda this.count.tile
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    ;same meta tile as before? skip meta pos calculation
+    cmp this.meta.current
+    beq +
+    
+    sta this.meta.current
+
+    lda this.pos.y
+    asl a
+    asl a
+    asl a
+    asl a
+    clc
+    adc this.meta.current
+    asl a
+    sta this.pos.layer
+    tay
+
++
+    ;@todo: shift by x-pos, split by table. simplifies transfer
+    lda this.count.tile
+    asl a
+    and.w #BACKGROUND.LINE.LENGTH-1
+    clc
+    adc background.ramBuffer.start
+    tax
+
+    ;get current meta tile
+    ;metatile byte position
+    lda this.count.tile
+    bit.w #TILEMAP.SIZE.X
+    bne ++
+      and.w #$f
+      asl a
+      clc
+      adc [this.metamap.layer.pointer],y
+
+      tay
+      lda [this.tilemap.pointer],y
+      clc
+      adc this.tile.config
+      sta.w (GLOBAL.wramBuffer.start &$ffff)+BACKGROUND.LINE.HORIZONTAL,x
+      bra +
+
+++
+      and.w #$f
+      asl a
+      clc
+      adc [this.metamap.layer.pointer],y
+
+      tay
+      lda [this.tilemap.pointer],y
+      clc
+      adc this.tile.config
+      sta.w (GLOBAL.wramBuffer.start &$ffff)+BACKGROUND.LINE.HORIZONTAL+BACKGROUND.LINE.LENGTH,x
+
+
++
+  inc this.count.tile
+
+.endr
+
+  ;transfer tileline
+  ;target_tilemap, segmented: (((this.screen.current.y/TILE.SIZE.Y) & TILEMAP.SIZE.Y-1)*(BACKGROUND.GENERIC.TILESIZE.X/2*2))+(((this.screen.current.x/TILE.SIZE.X)&BACKGROUND.GENERIC.TILESIZE.X/2-1)*2)+((this.screen.current.x/TILE.SIZE.X & BACKGROUND.GENERIC.TILESIZE.X/2)*$800)
+  ;target_tilemap, linear: ((((this.screen.current.y/TILE.SIZE.Y) & TILEMAP.SIZE.Y-1)*(BACKGROUND.GENERIC.TILESIZE.X))+(((this.screen.current.x/TILE.SIZE.X)&BACKGROUND.GENERIC.TILESIZE.X-1))*2)
+  
+  ;vram tilemap target
+  lda this.pos.y
+  and.w #BACKGROUND.GENERIC.TILESIZE.Y-1
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  sta this.pos.layer
+
+  lda.w #0
+  and.w #BACKGROUND.GENERIC.TILESIZE.X-1
+  clc
+  adc this.pos.layer
+  asl a
+  clc
+  adc animation.tilemap.start
+  sta this.pos.layer ;entry in linear 64x32 map
+  rtl
+
+
+/**
+  @expect this.pos.x,this.pos.y: tile position of row to draw
+  @expect this.tile.config: tile configuration to draw row with (palette, tile offset etc)
+  @out this.pos.layer: target position of row in segmented 2x32x32 tilemap
+*/
+extern.drawLine.vertical:
+  AX16
+  ;line setup
+  ldx.w #0
+
+  lda this.pos.y
+  sta this.count.tile
+
+.rept BACKGROUND.GENERIC.TILESIZE.Y
+    ;metatile byte position
+    lda this.pos.x
+    and.w #$f
+    asl a
+    sta this.pos.meta
+
+    ;source layer pointer
+    lda this.count.tile
+
+    asl a
+    asl a
+    asl a
+    asl a
+    sta this.pos.layer
+
+    lda this.pos.x
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    clc
+    adc this.pos.layer
+    asl a
+
+    ;get current meta tile
+    tay
+    phx
+
+    ;@todo: shift by y-pos. simplifies transfer
+    lda this.pos.y
+    asl a
+    clc
+    adc 1,s
+    and.w #BACKGROUND.LINE.LENGTH-1
+    clc
+    adc background.ramBuffer.start
+    tax
+
+    lda [this.metamap.layer.pointer],y
+
+    clc
+    adc this.pos.meta
+    tay
+    lda [this.tilemap.pointer],y
+    clc
+    adc this.tile.config
+
+
+    sta.w (GLOBAL.wramBuffer.start &$ffff)+BACKGROUND.LINE.VERTICAL,x
+    plx
+
+    inc this.count.tile
+
+    inx
+    inx
+.endr
+
+  ;transfer tileline
+  ;target_tilemap, segmented: (((this.screen.current.y/TILE.SIZE.Y) & TILEMAP.SIZE.Y-1)*(BACKGROUND.GENERIC.TILESIZE.X/2*2))+(((this.screen.current.x/TILE.SIZE.X)&BACKGROUND.GENERIC.TILESIZE.X/2-1)*2)+((this.screen.current.x/TILE.SIZE.X & BACKGROUND.GENERIC.TILESIZE.X/2)*$800)
+  ;target_tilemap, linear: ((((this.screen.current.y/TILE.SIZE.Y) & TILEMAP.SIZE.Y-1)*(BACKGROUND.GENERIC.TILESIZE.X))+(((this.screen.current.x/TILE.SIZE.X)&BACKGROUND.GENERIC.TILESIZE.X-1))*2)
+  
+  ;vram tilemap target
+  ;fixed y-pos, simplifies transfer
+  lda.w #0
+  and.w #TILEMAP.SIZE.Y-1
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  sta this.pos.layer
+
+  lda this.pos.x
+  and.w #TILEMAP.SIZE.X-1
+  clc
+  adc this.pos.layer
+  asl a
+  clc
+  adc animation.tilemap.start
+  sta this.pos.layer ;entry in linear 64x32 map
+
+  lda this.pos.x ;select upper/lower tilemap
+  bit.w #TILEMAP.SIZE.X
+  beq +
+    lda this.pos.layer
+    clc
+    adc.w #$800
+    sta this.pos.layer
++
+  rtl
+
+.ends

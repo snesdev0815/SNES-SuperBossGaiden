@@ -1,0 +1,38 @@
+/**
+* Some cutscene, probably in the beginning...
+*
+*/
+
+	SCRIPT goneFullBerzerk
+
+	.redef obj.script.slave hashPtr.1
+	.redef obj.hud this._tmp
+
+	SET_CUTSCENE_OPTIONAL
+
+	HUD_DISABLE obj.hud
+
+	pea FALSE
+	pea text.dialogue.goingBerzerk
+
+	lda.w FrameCounter
+	and.w #8
+	beq +
+		lda.w #text.dialogue.andBerzerk
+		sta 1,s
+
++	
+	SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox 
+	pla
+	pla
+	WAIT_FOR obj.script.slave
+
+
+	SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.talkOver FALSE
+	WAIT_FOR obj.script.slave
+
+	HUD_ENABLE obj.hud
+
+
+  	CUTSCENE_WAIT
+	DIE

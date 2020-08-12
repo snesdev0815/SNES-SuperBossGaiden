@@ -1,0 +1,81 @@
+/**
+* Audio file includes and custom definitions
+*
+*/
+
+.enum 0 export
+    AUDIO.EFFECT.TEXTBOX db
+    AUDIO.EFFECT.BLOCK db
+    AUDIO.EFFECT.DASH db
+    AUDIO.EFFECT.HIT.DASH db
+    AUDIO.EFFECT.HIT.FLOOR db
+    AUDIO.EFFECT.HIT.KICK db
+    AUDIO.EFFECT.HIT.PUNCH2 db
+    AUDIO.EFFECT.HIT.PUNCH3 db
+    AUDIO.EFFECT.HIT.STRONG db
+    AUDIO.EFFECT.HIT.UPPERCUT db
+    AUDIO.EFFECT.HURT db
+    AUDIO.EFFECT.PUNCH db
+    AUDIO.EFFECT.COMBO_READY db
+    AUDIO.EFFECT.THROW db
+    AUDIO.EFFECT.THROW_HIGH db
+    AUDIO.EFFECT.EYA db
+    AUDIO.EFFECT.EYA_HIGH db
+    AUDIO.EFFECT.DEATH db
+    AUDIO.EFFECT.DEATH_HIGH db
+    AUDIO.EFFECT.EXPLOSION db
+    AUDIO.EFFECT.ROAR db
+    AUDIO.EFFECT.COIN db
+    AUDIO.EFFECT.COIN_HIGH db
+    AUDIO.EFFECT.MAX ds 0
+.ende
+
+.Section "Audio Player" superfree
+spc700.code:
+  .incbin "build/src/audio/apucode.bin.lz4"
+.ends
+
+
+.section "samplepack" superfree
+SamplePack0:
+    .incbin "build/src/audio/0.samplepack.bin"
+.ends
+
+
+.Section "SongLUT" superfree
+SongLUT:
+ PTRLONG SongLUT Song.none
+ PTRLONG SongLUT Song.lhs_dfs4
+ PTRLONG SongLUT Song.title
+ PTRLONG SongLUT Song.titlesecret
+ PTRLONG SongLUT Song.intro
+ PTRLONG SongLUT Song.rampage
+ PTRLONG SongLUT Song.stage0
+ PTRLONG SongLUT Song.stage3
+ PTRLONG SongLUT Song.stage4
+ PTRLONG SongLUT Song.ending
+ PTRLONG SongLUT Song.danger
+ PTRLONG SongLUT Song.hurry
+ PTRLONG SongLUT Song.berzerk
+ PTRLONG SongLUT Song.pause
+ PTRLONG SongLUT Song.streetfighter
+ PTRLONG SongLUT Song.finalBoss
+
+.ends
+
+    SONG none none
+    SONG Bee_Walk title
+    SONG Dora_Explorer titlesecret
+    SONG Nintendo_World_Cup stage3
+    SONG Speed_Up stage4
+    SONG Luftballons_Chip ending
+    SONG Horizon_Skies danger
+    SONG Snowy_Mountain hurry
+    SONG DFS_Installer_4 lhs_dfs4
+    SONG Sweet_Soda_2 berzerk
+    SONG Bass_Play pause
+    SONG Balrog_Theme_Remix streetfighter
+    SONG Happy_Green_Tree_1 intro
+    SONG Happy_Green_Tree_3 rampage
+    SONG Water_and_Sun stage0
+    SONG Black_Magic finalBoss

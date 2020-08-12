@@ -1,0 +1,24 @@
+/**
+* Helper Object for Iterator Unit Test.
+* 
+*/
+
+.include "src/class/unit_test/iterator_test.h"
+.section "iterator_test"
+
+/**
+* @param a<16bit>	iterator.properties this instance should have
+*/
+  METHOD setProperties
+  jsr iterator.library.setProperties
+  sec
+  rts
+
+  METHOD badeaffe
+  lda.w #$bade
+  lda.w #$affe
+  rts
+
+  CLASS Iterator_test setProperties badeaffe
+.ends	
+	

@@ -1,0 +1,63 @@
+/**
+* Level/map file includes and custom definitions
+*
+*/
+
+;level collision definition
+.enum 0 export
+  LEVEL.COLLISION.MODE.NONE db
+  LEVEL.COLLISION.MODE.SOLID db
+  LEVEL.COLLISION.MODE.VERTICAL_PASS db
+  LEVEL.COLLISION.MODE.LADDER db
+  LEVEL.COLLISION.MODE.BOUNCE db
+  LEVEL.COLLISION.MODE.HAZARD db
+  LEVEL.COLLISION.MODE.ABYSS db
+  LEVEL.COLLISION.MODE.WALL_JUMP_LEFT db
+  LEVEL.COLLISION.MODE.WALL_JUMP_RIGHT db
+  LEVEL.COLLISION.MODE.CONVEYOR_LEFT db
+  LEVEL.COLLISION.MODE.CONVEYOR_RIGHT db
+.ende
+
+.def TIMER.NONE 0
+
+.Section "levelLUT" superfree
+levelLUT:
+  LEVEL level.sony_hq_1
+  LEVEL level.sony_hq_2
+  LEVEL level.sony_hq_3
+  LEVEL level.escape
+  LEVEL level.ending
+  LEVEL level.secret_disk_kun
+  LEVEL level.secret_parabo
+.ends
+
+;@see LEVEL.COLLISION.TILE.
+.Section "levelTileHeightMap" superfree
+levelTileHeightMap:
+  .dw 0   ;LEVEL.COLLISION.TILE.TOPDOWN.EMPTY db
+  .dw 0   ;LEVEL.COLLISION.TILE.TOPDOWN.SOLID db
+  .dw 0   ;LEVEL.COLLISION.TILE.TOPDOWN.HAZARD db
+  .dw 0   ;LEVEL.COLLISION.TILE.TOPDOWN.ICE db
+  .dw 0   ;LEVEL.COLLISION.TILE.TOPDOWN.ABYSS db
+  .dw 0   ;LEVEL.COLLISION.TILE.TOPDOWN.CONSTRAINED db
+  .dw LEVEL.TILE.ELEVATED.HEIGHT   ;LEVEL.COLLISION.TILE.TOPDOWN.ELEVATED db
+  .dw LEVEL.TILE.ELEVATED.HEIGHT/2   ;LEVEL.COLLISION.TILE.TOPDOWN.STAIR db
+
+  .dw 0   ;LEVEL.COLLISION.TILE.SIDESCROLL.EMPTY db
+  .dw 0   ;LEVEL.COLLISION.TILE.SIDESCROLL.SOLID db
+  .dw 0   ;LEVEL.COLLISION.TILE.SIDESCROLL.HAZARD db
+  .dw 0   ;LEVEL.COLLISION.TILE.SIDESCROLL.ICE db
+  .dw 0   ;LEVEL.COLLISION.TILE.SIDESCROLL.ABYSS db
+  .dw 0   ;LEVEL.COLLISION.TILE.SIDESCROLL.CONSTRAINED db
+  .dw 0   ;LEVEL.COLLISION.TILE.SIDESCROLL.ELEVATED db
+  .dw 0   ;LEVEL.COLLISION.TILE.SIDESCROLL.STAIR db
+.ends
+
+
+  .include "build/data/levels/sony_hq_1.asm"
+  .include "build/data/levels/sony_hq_2.asm"
+  .include "build/data/levels/sony_hq_3.asm"
+  .include "build/data/levels/escape.asm"
+  .include "build/data/levels/ending.asm"
+  .include "build/data/levels/secret_disk_kun.asm"
+  .include "build/data/levels/secret_parabo.asm"

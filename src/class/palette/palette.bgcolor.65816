@@ -1,0 +1,86 @@
+/**
+* Special palette object that occupies first palette entry in order to control background color
+*
+*/
+
+.include "src/class/palette/palette.bgcolor.h"
+.section "palette.bgcolor"
+
+  /**
+  * @param arg.1 <int, 16bit>    target animation id
+  * @param arg.2 <int, 16bit>    delay (0=fastest)
+  */
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta palette.animation.id
+
+  lda OBJECT.CALL.ARG.2,s
+  sta palette.animation.speed
+  
+  lda #4
+  sta palette.color.length
+
+  stz palette.color.start
+
+  jsr _allocate
+  jmp palette.library.playAnimation
+
+_allocate:
+  AX16
+  ;occupy first palette entry. if not allocatable, throw error
+  ldy palette.color.start
+  ldx palette.color.length
+  lda #PALETTE.GRANULARITY.2BPP
+  jsr core.cgram.allocate
+  bcs +
+      pei (palette.color.length)
+      TRIGGER_ERROR E_OutOfCgram
++
+  cpx palette.color.start
+  beq +
+      pei (palette.color.length)
+      TRIGGER_ERROR E_OutOfCgram
+  
++
+  sta this.palette.id
+  
+  lda palette.animation.id
+  jmp palette.library.startAnimation
+
+
+  METHOD play
+  jmp palette.library.playAnimation
+
+  METHOD stop
+  jmp palette.library.stopAnimation
+
+  METHOD isDone
+  lda palette.animation.flags
+  bit.w #ANIMATION.FLAGS.IS_PLAYING
+  beq +
+    clc
+    rts
++
+  sec
+  rts
+  
+  METHOD kill
+  sep #$20
+  lda this.palette.id
+  jsr core.cgram.deallocate
+  rep #$31
+  jmp object.library.kill
+
+  METHOD disable
+  sep #$20
+  lda this.palette.id
+  jsr core.cgram.deallocate
+  rep #$31
+  rts
+
+  METHOD enable
+  jmp _allocate
+  
+  CLASS palette.bgcolor stop isDone
+
+.ends	

@@ -1,0 +1,748 @@
+/**
+* A background for printing strings to using variable-size VWF.
+*
+*/
+
+.include "src/class/background/textlayer/background.textlayer.vwf.h"
+.section "background.textlayer.vwf"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta.b this.tile.allocation.size.total
+
+  lda OBJECT.CALL.ARG.2,s
+  sta.b this.bg
+
+  lda OBJECT.CALL.ARG.3,s
+  sta.b this.delay
+
+  lda OBJECT.CALL.ARG.4,s
+  sta.b this.charspeed
+
+  ;acquire status layer
+  jsr iterator.library.reset
+-
+    lda.w #background.level.layer.CLS.PTR
+    jsr iterator.library.each.byId
+    bcc ++
+
+    CALL background.level.layer.getBgId.MTD iterator.target
+    cmp.b this.bg
+    bne -
+
+      ldx.w #iterator.target
+      jsr core.object.isDisabled
+      bcs ++
+
+      lda iterator.target
+      sta this.level.layer
+      lda iterator.target+2
+      sta this.level.layer+2
+
+      ldx.w #this.level.layer
+      jsr core.object.disable
+
+++
+
+  NEW palette.bgcolor.CLS.PTR this.bgcolor PALETTE.black.PTR 1
+  ldx.w #this.bgcolor
+  jsr core.object.disable
+
+  lda.w #(ANIMATION.FLAGS.IS_MAINSCREEN | ANIMATION.FLAGS.POSITION_ABSOLUTE)
+  tsb animation.flags.static
+
+  lda #BG.FORMAT.PRIORITY
+  sta animation.buffer.flags
+
+  jsr _allocate
+  jmp _clearMemory
+
+
+_clearMemory:
+  AX16
+  lda.w #(ANIMATION.FLAGS.IS_MAINSCREEN | ANIMATION.FLAGS.IS_SUBSCREEN)
+  trb animation.flags.static
+
+  lda.b this.bg
+  jsr background.library.makePhysical
+
+  ;clear wram buffer
+  ldy animation.tilemap.length
+  lda.w #GLOBAL.wramBuffer.start
+  clc
+  adc background.ramBuffer.start
+  tax
+  lda #WRAM.CLEAR_PATTERN.ZERO
+  jsr ClearWRAM
+
+  ;wait three frames before reporting ready, mitigate dma congestion
+  lda.w #4
+  sta this.busy
+
+  ;quick hack to leave first tile unused. maybe also actually upload a tile?
+  lda this.bg
+  jsr background.library.getBpp
+  asl a
+  asl a
+  asl a
+  sta this.tile.allocation.size.current
+  stz this.tiles.uploaded  
+  rts
+
+
+_allocate:
+  AX16
+  lda this.bg
+  jsr background.library.getBpp
+  jsr background.library.bppToIndex
+  sep #$20
+  sta background.tiles.bpp
+
+  rep #$31
+  lda this.tile.allocation.size.total
+  sta animation.tiles.length
+
+  lda #BG.VWF.PALETTE.LENGTH
+  sta animation.palette.length
+
+  lda.w #TILEMAP.SIZE.SINGLE
+  sta animation.tilemap.length
+  sta animation.frame.tilemap.length
+
+  jmp background.library.allocateMemory
+
+  METHOD play
+  lda this.busy
+  asl a
+  tax
+  jmp (_play.lut,x)
+
+_play.lut:
+  .dw _play.idle
+  .dw _play.enable
+  .dw _play.tilemap2
+  .dw _play.tilemap1
+  .dw _play.tiles
+
+_play.idle:
+  AX16
+  rts
+
+_play.enable:
+  AX16
+  dec this.busy
+  lda.w #ANIMATION.FLAGS.IS_MAINSCREEN
+  tsb animation.flags.static
+  
+  lda.b this.bg
+  jmp background.library.makePhysical
+
+
+_play.tilemap1:
+  AX16
+  ;wait until buffer can be safely uploaded
+  lda animation.tilemap.length
+  lsr a
+  jsr core.dma.check.length
+  bcc +
+    dec this.busy
+    tsx
+    lda.w #GLOBAL.wramBuffer.start
+    clc
+    adc.b background.ramBuffer.start
+    tay
+
+    sep #$20
+    lda #DMA_TRANSFER.VRAM  ;transfer type
+    pha
+    phy
+    lda.b #RAM    ;source bank
+
+    pha
+    rep #$31
+
+    pei (animation.tilemap.start)
+    lda animation.tilemap.length
+    lsr a
+    pha
+
+    jsr core.dma.registerTransfer
+    txs    
+
++
+  rts
+
+_play.tilemap2:
+  AX16
+  ;wait until buffer can be safely uploaded
+  lda animation.tilemap.length
+  lsr a
+  jsr core.dma.check.length
+  bcc +
+    dec this.busy
+    ;jsr background.library.uploadTilemap
+    tsx
+    lda.w #GLOBAL.wramBuffer.start
+    clc
+    adc.b background.ramBuffer.start
+    tay
+
+    sep #$20
+    lda #DMA_TRANSFER.VRAM  ;transfer type
+    pha
+    phy
+    lda.b #RAM    ;source bank
+
+    pha
+    rep #$31
+
+    lda animation.tilemap.length
+    lsr a
+    clc
+    adc animation.tilemap.start
+    pha
+    lda animation.tilemap.length
+    lsr a
+    pha
+
+    jsr core.dma.registerTransfer
+    txs    
+
++
+  rts
+
+_play.tiles:
+  AX16
+  jsr core.dma.remainingFree
+  tax
+  lda animation.tiles.length
+  sec
+  sbc this.tiles.uploaded
+  jsr core.math.min
+  cmp.w #0
+  beq +
+    tsx
+    pha ;upload length for this frame
+    clc
+    adc this.tiles.uploaded
+    cmp animation.tiles.length
+    bne ++
+      ;done? goto next phase
+      dec this.busy
+
+++
+    ;clear vram buffer
+    sep #$20
+    lda #DMA_TRANSFER.VRAM | DMA_TRANSFER.OPTION.FIXED_SOURCE     ;transfer type
+    pha
+    pea ClearWramBytePatterns
+    lda.b #:ClearWramBytePatterns       ;source bank
+    pha
+    rep #$31
+
+    lda animation.tiles.start
+    clc
+    adc this.tiles.uploaded
+    pha
+
+    ;@todo: maybe try to determine affected only, reduce transfer length
+    lda 7,s
+    pha
+    clc
+    adc this.tiles.uploaded
+    sta this.tiles.uploaded
+
+    jsr core.dma.registerTransfer
+    txs
+
++
+  rts  
+
+
+  METHOD kill
+  lda.w #vwf.renderer.CLS.PTR
+  jsr iterator.library.kill.byId
+
+  lda.b this.bg
+  jsr background.library.makeVirtual
+  jsr background.library.deallocate
+
+  ldx.w #this.bgcolor
+  jsr core.object.enable
+  
+  ldx.w #this.level.layer
+  jsr core.object.isDisabled
+  bcc +
+    ldx.w #this.level.layer
+    jsr core.object.enable
++
+
+  jmp object.library.kill
+
+
+  METHOD clear
+  jmp _clearMemory
+
+/**
+* @param 1<int, 16bit>  string pointer (in wram, $7e)
+* @param 2<int, 16bit>  font id
+* @param 3<int, 16bit>  vwf line width in pixels
+* @param 4<int, 16bit>  x-position in pixels
+* @param 5<int, 16bit>  y-position in pixels
+* @param 6<int, 16bit>  allocated target adress. VOID means allocate new
+*
+* @return allocated target adress used
+*/
+  METHOD printProcessedString  
+  lda #RAM << 8
+  sta this.current.string.pointer+1 
+  lda OBJECT.CALL.ARG.1,s
+  sta.b this.current.string.pointer
+
+  lda OBJECT.CALL.ARG.2,s
+  sta.b this.current.font
+
+  lda OBJECT.CALL.ARG.3,s
+  lsr a
+  lsr a
+  lsr a
+  sta.b this.current.tileline.width
+
+  lda OBJECT.CALL.ARG.4,s
+  lsr a
+  lsr a
+  lsr a
+  sta.b this.current.position.x
+
+  lda OBJECT.CALL.ARG.5,s
+  lsr a
+  lsr a
+  lsr a
+  sta.b this.current.position.y
+
+  jsr vwf.library.getFontData
+  jsr vwf.library.uploadPalette
+
+  ;need to set this.tile.allocation.size.current to what it was before?
+  ;maybe passed out thing should be BEFORE allocation, not after?
+  ;problem, though: interwoven dynamical uploads would then overwrite existing.
+  ;need to cache current actual end
+  ;but only if current is not last. actually not. if non-standard adress supplied, we already ran that
+
+  ;initialize, first renderer doesn't have to wait for anything
+  lda #VOID
+  sta this.renderer.last
+  lda #VOID
+  sta this.renderer.last+2
+
+  ;if allocated adress supplied, use that instead of allocating new
+  lda OBJECT.CALL.ARG.6,s
+  cmp #VOID
+  beq +
+    sta this.tile.allocation.size.current
+
++
+  pei (this.tile.allocation.size.current)
+
+;line loop
+-
+  lda this.current.tileline.height
+  asl a
+  tax 
+  jsr (_setuptilemap.lut,x)
+
+  lda this.bg
+  jsr background.library.getBpp
+  lsr a
+  tax
+
+asdfdsljaklf:
+  phx
+  ;calculate required buffer size in bytes
+  ldx this.current.tileline.width
+  lda this.current.tileline.height
+  jsr core.math.mul.8bit
+  plx
+
+---
+  cpx.w #0
+  beq +++
+    asl a
+    dex
+    bra ---
+
++++
+
+  asl a
+  asl a
+  asl a  
+  sta this.current.tilebuffer.size
+
+  lda this.current.tilebuffer.size
+  clc
+  adc this.tile.allocation.size.current ;tile id is based on this.
+
+  cmp this.tile.allocation.size.total
+  bcc +
+    pha
+    TRIGGER_ERROR E_VwfAllocationOverflow
+
++
+  sta this.tile.allocation.size.current
+
+  lda this.bg
+  jsr background.library.getBpp
+  pha
+
+  pei (this.renderer.last)
+  pei (this.renderer.last+2)
+  pei (this.current.tilebuffer.size)
+  lda animation.tiles.start
+  clc
+  adc this.tile.allocation.size.current
+  sec
+  sbc this.current.tilebuffer.size
+  pha
+  pei (this.charspeed)
+  pei (this.delay)
+  pei (this.current.font)
+  pei (this.current.string.pointer)
+
+  NEW_TRY vwf.renderer.CLS.PTR this.renderer.last
+
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+
+  bcs ++
+    pla
+    clc
+    rts
+++  
+  ldy.w #0
+--
+
+      lda [this.current.string.pointer],y
+      iny
+      iny
+      cmp #TC_end
+      beq + ;string done
+
+      cmp #TC_brk
+      bne --
+
+      ;write new line
+      tya
+      clc
+      adc this.current.string.pointer
+      sta this.current.string.pointer
+      jmp -
+
+
+
++
+
+
+  pla ;this is important, returns allocation start adress!!
+  sec
+  rts
+
+
+_setuptilemap.lut:
+  .dw _void
+  .dw _setupTilemapLine.8x8
+  .dw _setupTilemapLine.16x16
+  .dw _void
+
+_void:
+  TRIGGER_ERROR E_Todo
+
+vwf.library.uploadPalette:
+  AX16
+  tsx
+
+  lda this.current.font.pointer
+  clc
+  adc #VWF.PALETTE+2
+  tay
+  
+  sep #$20
+  lda #DMA_TRANSFER.CGRAM   ;transfer type
+  pha
+  phy
+  lda.b this.current.font.pointer+2       ;source bank
+  pha
+  rep #$31
+
+  lda animation.palette.start
+  clc
+  adc.w #2
+  pha
+  lda animation.palette.length
+  sec
+  sbc.w #2
+  pha
+
+  jsr core.dma.registerTransfer
+  txs
+  rts
+
+_setupTilemapLine.8x8:
+  AX16
+  jsr background.library.shiftPaletteStart
+  and.w #BG.PALETTE.BITS
+  ora this.palette.bits
+  pha
+
+  ;get pointer into tilemap
+  lda this.current.position.y
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  clc
+  adc this.current.position.x
+  asl a
+  sta this.tilemap.first
+  clc
+  adc.b background.ramBuffer.start
+  tax
+
+  lda this.bg
+  jsr background.library.getBpp
+  lsr a
+  tay
+
+  ;get tile start id
+  lda this.tile.allocation.size.current
+-
+  cpy.w #0
+  beq +
+    lsr a
+    dey
+    bra -
+
++
+  lsr a
+  lsr a
+  lsr a
+  pha
+
+  ldy this.current.tileline.width  
+
+-
+    pei (this.current.tileline.height)
+--
+      lda 3,s
+      xba
+      sep #$20
+      clc
+      adc 5,s
+      rep #$31
+      xba
+      ;vhopppcc
+      ora.b animation.buffer.flags
+      sta.w GLOBAL.wramBuffer.start,x
+      inx
+      inx
+
+      lda 3,s
+      inc a
+      sta 3,s
+
+      lda 1,s
+      dec a
+      sta 1,s
+      bne --
+
+    pla
+
+    dey
+    bne -
+
+  txa
+  sec
+  sbc.b background.ramBuffer.start
+  sta this.tilemap.last
+  pla
+  pla
+
+  pei (this.tilemap.last)
+  pei (this.tilemap.first)
+  jsr background.library.uploadTilemapRange
+  pla
+  pla
+
+  ;prepare for next line
+  inc this.current.position.y
+  rts
+
+_setupTilemapLine.16x16:
+  AX16
+  jsr background.library.shiftPaletteStart
+  and.w #BG.PALETTE.BITS
+  ora this.palette.bits
+  pha
+
+  ;get pointer into tilemap
+  lda this.current.position.y
+  asl a
+  asl a
+  asl a
+  asl a
+  asl a
+  clc
+  adc this.current.position.x  
+  asl a
+  sta this.tilemap.first
+  clc
+  adc.b background.ramBuffer.start
+  tax
+
+  lda this.bg
+  jsr background.library.getBpp
+  lsr a
+  tay
+
+  ;get tile start id
+  lda this.tile.allocation.size.current
+-
+  cpy.w #0
+  beq +
+    lsr a
+    dey
+    bra -
+
++
+  lsr a
+  lsr a
+  lsr a
+  pha
+
+  ldy this.current.tileline.width  
+-
+      lda 1,s
+      xba
+      sep #$20
+      clc
+      adc 3,s
+      rep #$31
+      xba
+      ;vhopppcc
+      ora.b animation.buffer.flags
+      sta.w GLOBAL.wramBuffer.start,x
+
+      lda 1,s
+      inc a
+      sta 1,s
+      xba
+      sep #$20
+      clc
+      adc 3,s
+      rep #$31
+      xba
+      ;vhopppcc
+      ora.b animation.buffer.flags
+      sta.w (GLOBAL.wramBuffer.start&$ffff)+$40,x
+
+      inx
+      inx
+
+      lda 1,s
+      inc a
+      sta 1,s
+
+    dey
+    bne -
+
+  txa
+  sec
+  sbc.b background.ramBuffer.start
+  clc
+  adc.w #$40
+  sta this.tilemap.last
+  pla
+  pla
+
+  pei (this.tilemap.last)
+  pei (this.tilemap.first)
+  jsr background.library.uploadTilemapRange
+  pla
+  pla
+
+  ;prepare for next line
+  inc this.current.position.y
+  inc this.current.position.y
+  rts
+
+vwf.library.getFontData:
+  AX16
+  lda.w #GLOBAL.vwfFontPacked
+  sta.b this.current.font.pointer
+  lda.w #GLOBAL.vwfFontPacked >> 8
+  sta.b this.current.font.pointer + 1
+
+  ;check header magic
+  ldy.w #VWF.MAGIC
+  lda.b [this.current.font.pointer], y
+  cmp.w #VWF.MAGIC.VALUE
+  beq +
+    pei (this.current.font)
+    TRIGGER_ERROR E_BadVwfFont
+
++
+  ;fetch config
+  ldy.w #VWF.TILE_HEIGHT
+  lda.b [this.current.font.pointer], y
+  and.w #$ff
+  lsr a
+  lsr a
+  lsr a
+  sta.b this.current.tileline.height
+
+  ;only 4bpp supported for now
+  ldy.w #VWF.BPP
+  lda.b [this.current.font.pointer], y
+  and.w #$ff
+  cmp #9
+  bcc +
+    pei (this.current.font)
+    TRIGGER_ERROR E_Todo
+
++
+  ldy.w #VWF.PALETTE_ID
+  lda.b [this.current.font.pointer], y
+  asl a
+  asl a
+  and.w #BG.PALETTE.BITS  
+  sta this.palette.bits
+
+  rts
+
+  METHOD flush
+  rts
+
+  METHOD isDone
+  lda this.busy
+  bne +
+    jsr iterator.library.reset
+    lda #vwf.renderer.CLS.PTR
+    jsr iterator.library.each.byId
+    bcs +
+       sec
+       rts
+  
++
+    clc
+    rts
+
+  CLASS background.textlayer.vwf clear printProcessedString flush isDone
+.ends	
+	

@@ -1,0 +1,244 @@
+/**
+* Parses input textstring, writes to WRAM buffer
+*
+* @param 1,2<int, 32bit>  rendering context (pointer to obj sprite.vwf or background.vwf)
+*/
+
+.include "src/class/vwf/vwf.parser.h"
+.section "vwf.parser"
+
+  METHOD init
+  lda OBJECT.CALL.ARG.1,s
+  sta this.context+2
+  lda OBJECT.CALL.ARG.2,s
+  sta this.context
+
+  ldx #VWF.PARSER.BUFFER.LENGTH
+  jsr core.wram.allocate
+  bcs +
+    pea VWF.PARSER.BUFFER.LENGTH
+    TRIGGER_ERROR E_OutOfWram
+
+
++ stx.b this.wram.buffer.start
+  sep #$20
+  sta.b this.wram.buffer.id
+  rep #$31
+
+  rts
+
+  METHOD play
+  rts
+
+/**
+* parses & prints input textstring to rendering context
+*
+* @param 1<int, 16bit>  string id
+* @param 2<int, 16bit>  font id
+* @param 3<int, 16bit>  vwf line width in pixels
+* @param 4<int, 16bit>  x-position in pixels
+* @param 5<int, 16bit>  x-position in pixels
+* @param 6<int, 16bit>  allocation adress
+
+* @param 7<int, 16bit>  string parameter 0
+* @param 8<int, 16bit>  string parameter 1
+* @param 9<int, 16bit>  string parameter 2
+;* @param 9<int, 16bit>  string parameter 3
+*
+* @return allocated target adress used
+*/
+
+  METHOD print
+  stz line
+
+  lda OBJECT.CALL.ARG.1,s
+  sta this.string.id
+
+  lda OBJECT.CALL.ARG.3,s
+  sta this.linewidth
+
+  lda OBJECT.CALL.ARG.4,s
+  sta this.pos.x
+
+  lda OBJECT.CALL.ARG.5,s
+  sta this.pos.y
+
+  lda OBJECT.CALL.ARG.6,s
+  sta this.allocation.start
+
+  lda OBJECT.CALL.ARG.7,s
+  sta this.arg.0
+
+  lda OBJECT.CALL.ARG.8,s
+  sta this.arg.1
+
+  lda OBJECT.CALL.ARG.9,s
+  sta this.arg.2
+
+  lda OBJECT.CALL.ARG.10,s
+  sta this.arg.3
+
+  lda OBJECT.CALL.ARG.11,s
+  sta this.arg.4
+
+  lda OBJECT.CALL.ARG.12,s
+  sta this.arg.5
+
+  lda OBJECT.CALL.ARG.2,s
+  sta this.font.id
+
+  lda.w #GLOBAL.vwfFontPacked
+  sta.b this.font.pointer
+  lda.w #GLOBAL.vwfFontPacked >> 8
+  sta.b this.font.pointer + 1
+  
+  ;check header magic
+  ldy.w #VWF.MAGIC
+  lda.b [this.font.pointer], y
+  cmp.w #VWF.MAGIC.VALUE
+  beq +
+    pei (this.font.id)
+    TRIGGER_ERROR E_BadVwfFont
+
++
+  jsr core.string.reset
+
+  lda #core.string.print.vwfparser.CLB
+  ldx iterator.self
+  ldy iterator.self+2
+  jsr core.string.registerCallback
+
+  stz this.char.current
+  stz this.linechar.current
+
+  lda OBJECT.CALL.ARG.1,s
+  pei (this.arg.5)
+  pei (this.arg.4)
+  pei (this.arg.3)
+  pei (this.arg.2)
+  pei (this.arg.1)
+  pei (this.arg.0)
+  jsr core.string.parse
+  pla  
+  pla
+  pla
+  pla
+  pla
+  pla
+
+  pei (this.allocation.start)
+  pei (this.pos.y)
+  pei (this.pos.x)
+  pei (this.linewidth)
+  pei (this.font.id)
+
+  ;calculate string start buffer adress
+  lda this.wram.buffer.start
+  clc
+  adc.w #GLOBAL.wramBuffer.start
+  clc
+  adc line
+  pha
+  CALL background.textlayer.vwf.printProcessedString.MTD this.context
+
+  tax
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  txa
+  rts
+
+
+  ;starts in string context:
+  CALLBACK core.string.print.vwfparser
+    AX16
+    ;check whether context object moved/exists
+    ldx #static.string.render.context
+    jsr core.object.exists
+    bcs +
+      TRIGGER_ERROR E_ObjNotFound
+
++
+    lda static.string.render.context+3
+    INDEX_TO_HASH_POINTER
+    tax
+    lda.l OopStack.dp,x
+    sta static.string.render.dp
+
+    ldy #0      
+-
+        lda [static.string.current.pointer],y
+        and #$ff        
+        cmp #TC_brk ;special case break, just print away...
+        beq ++
+
+        cmp #' '    ;lower than whitespace??
+        bcs ++
+            jsl extend.string.printCommand
+
+        bcs +
+        bra -
+
+++
+          phy
+          phd
+          pei (static.string.render.dp)
+          pld
+
+          ;we're now in textlayer object context!
+          ;current char in a
+
+          ;access to string context: lda.w directPage.static.string + static.string.cursor.position.y
+          pha
+
+          lda this.char.current
+          asl a
+          clc
+          adc this.wram.buffer.start
+          tay
+
+          lda 1,s
+          asl a
+          tax
+          lda.l vwfChar.ascii.LUT,x
+          xba
+          sta.w GLOBAL.wramBuffer.start,y
+
+          ;print terminator
+          lda #0
+          sta.w (GLOBAL.wramBuffer.start&$ffff)+2,y
+
+          inc this.char.current
+          pla
+
+          ;returning to string context:
+          pld
+          ply
+
+          lda static.string.cursor.position.x
+          clc
+          adc.w #GLOBAL.TEXTLAYER.8x8.FONT.SIZE.X
+          sta static.string.cursor.position.x
+
+          iny
+          bra -
+
++
+    rts
+
+  METHOD kill
+  jsr core.string.killSprite
+
+  lda.b this.wram.buffer.id
+  and.w #$ff
+  jsl extend.wram.deallocate
+  jmp object.library.kill
+
+  
+  CLASS vwf.parser print
+
+.ends	
+	

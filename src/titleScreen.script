@@ -1,0 +1,156 @@
+/**
+* It's the titlescreen!
+* Display collected secrets, play hidden alternate titlescreen music if all secrets collected.
+*
+*/
+
+  SCRIPT titleScreen
+	.redef obj.layer0 hashPtr.1
+	.redef obj.layer1 hashPtr.2
+	.redef obj.hdmaGradient hashPtr.3
+	.redef obj.press_start hashPtr.4
+	.redef obj.hdmaZoom hashPtr.5
+	.redef obj.fixedColor hashPtr.6
+	.redef obj.boss hashPtr.7
+	.redef obj.bgcolor hashPtr.8
+
+	.redef obj.brightness this._tmp
+	.redef obj.persistency this._tmp+4
+	.redef pos_x this._tmp+8
+	.redef alternateTitle this._tmp+10
+
+	SCRIPT_NEW persistency.slot.CLS.PTR obj.persistency
+
+	stz alternateTitle
+
+	;init hdma effect stuff
+	SCRIPT_NEW palette.bgcolor.CLS.PTR obj.bgcolor PALETTE.black.PTR 1
+
+	SCRIPT_NEW fixedColor.CLS.PTR obj.fixedColor
+	lda.w #FIXED_COLOR.WHITE
+	SCRIPT_CALL fixedColor.set.MTD obj.fixedColor
+
+	lda.w #FIXED_COLOR.BLACK
+	SCRIPT_CALL fixedColor.fadeTo.MTD obj.fixedColor
+
+	SCRIPT_NEW Brightness.CLS.PTR obj.brightness
+	lda.w #BRIGHTNESS.FULL
+	SCRIPT_CALL Brightness.fadeTo.MTD obj.brightness
+
+	sep #$20
+
+	;setup color window add to mainscreen
+	lda #(WOBJSEL_COL_W1_ENABLE | WOBJSEL_COL_W2_ENABLE)
+	sta.w windowObjSel
+
+	lda #WOBJLOG_COL_OR
+	sta.w windowObjLogic
+
+	lda #(CGWSEL_CLIP_COL_NEVER | CGWSEL_NO_COL_MATH_NEVER)
+	sta.w colorAdditionSelect
+
+	lda #(CGADSUB_BAC_ENABLE | CGADSUB_OBJ_ENABLE | CGADSUB_BG3_ENABLE | CGADSUB_BG2_ENABLE | CGADSUB_BG1_ENABLE)
+	sta.w CgadsubConfig
+	stz.w SubScreen
+	rep #$31
+
+
+	SCRIPT_NEW background.generic.CLS.PTR obj.layer0 BG.LAYER.0 BG.title.logo.packed.PTR TRUE
+	SCRIPT_NEW background.generic.CLS.PTR obj.layer1 BG.LAYER.1 BG.title.background.packed.PTR FALSE
+
+	.redef SPRITE_FLAGS (ANIMATION.FLAGS.POSITION_ABSOLUTE | ANIMATION.FLAGS.IS_LOOPING | ANIMATION.FLAGS.PRIORITY_MAX)
+
+    pea (FLAG.PERSISTENT.PLAYER_ENABLE.1 << 8) | PERSISTENCY.SLOT.BITFLAG
+    SCRIPT_CALL persistency.slot.get.MTD obj.persistency
+    sta 1,s
+    pla
+    beq +
+		SCRIPT_NEW sprite.generic.CLS.PTR VOID 88 174 SPRITE.disk_kun.idle.PTR $f SPRITE_FLAGS
+		inc alternateTitle
+
++
+    pea (FLAG.PERSISTENT.PLAYER_ENABLE.2 << 8) | PERSISTENCY.SLOT.BITFLAG
+    SCRIPT_CALL persistency.slot.get.MTD obj.persistency
+    sta 1,s
+    pla
+    beq +
+		SCRIPT_NEW sprite.generic.CLS.PTR VOID 120 166 SPRITE.parabo.idle.PTR $f SPRITE_FLAGS
+		inc alternateTitle
+
++
+    pea (FLAG.PERSISTENT.GAME_BEATEN << 8) | PERSISTENCY.SLOT.BITFLAG
+    SCRIPT_CALL persistency.slot.get.MTD obj.persistency
+    sta 1,s
+    pla
+    beq +
+		inc alternateTitle
+
++
+    pea (FLAG.PERSISTENT.EASTER_EGG << 8) | PERSISTENCY.SLOT.BITFLAG
+    SCRIPT_CALL persistency.slot.get.MTD obj.persistency
+    sta 1,s
+    pla
+    beq +
+    	SCRIPT_NEW sprite.generic.CLS.PTR VOID 144 180 SPRITE.cone.idle.PTR $f SPRITE_FLAGS
+		inc alternateTitle
+
++
+    pea (FLAG.PERSISTENT.EASTER_EGG.1 << 8) | PERSISTENCY.SLOT.BITFLAG
+    SCRIPT_CALL persistency.slot.get.MTD obj.persistency
+    sta 1,s
+    pla
+    beq +
+    	SCRIPT_NEW sprite.generic.CLS.PTR VOID 168 180 SPRITE.cone.idle.PTR $f SPRITE_FLAGS
+		inc alternateTitle
+
++
+    pea (FLAG.PERSISTENT.EASTER_EGG.2 << 8) | PERSISTENCY.SLOT.BITFLAG
+    SCRIPT_CALL persistency.slot.get.MTD obj.persistency
+    sta 1,s
+    pla
+    beq +
+    	SCRIPT_NEW sprite.generic.CLS.PTR VOID 192 180 SPRITE.cone.idle.PTR $f SPRITE_FLAGS
+		inc alternateTitle
+
++
+    pea (FLAG.PERSISTENT.EASTER_EGG.3 << 8) | PERSISTENCY.SLOT.BITFLAG
+    SCRIPT_CALL persistency.slot.get.MTD obj.persistency
+    sta 1,s
+    pla
+    beq +
+    	SCRIPT_NEW sprite.generic.CLS.PTR VOID 216 180 SPRITE.cone.idle.PTR $f SPRITE_FLAGS
+		inc alternateTitle
+
++
+	lda alternateTitle
+	cmp.w #7
+	bne +
+	  	lda.w #Song.titlesecret.PTR
+	  	SCRIPT_JSR core.audio.playSong
+		SCRIPT_NEW sprite.generic.CLS.PTR obj.boss 30 171 SPRITE.portrait.boss.bliss.PTR $f SPRITE_FLAGS
+		SCRIPT_NEW hdma.paletteAnimation.CLS.PTR obj.hdmaGradient 0 0 HDMA.sky_bleak.PTR $1 0 0 0
+		bra ++
+
++
+	lda.w #Song.title.PTR
+  	SCRIPT_JSR core.audio.playSong
+	SCRIPT_NEW sprite.generic.CLS.PTR obj.boss 30 171 SPRITE.portrait.boss.twitch.PTR $f SPRITE_FLAGS
+
+	SCRIPT_NEW hdma.paletteAnimation.CLS.PTR obj.hdmaGradient 0 0 HDMA.sky_bleak.PTR $1 0 0 0
+++	
+	SAVE
+	pea 0
+	lda pos_x
+	lsr a
+	lsr a
+	pha
+	SCRIPT_CALL background.generic.setPosition.MTD obj.layer1
+	pla
+	pla
+	inc pos_x
+
+	rts
+
+  	DIE
+  
+  

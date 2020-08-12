@@ -1,0 +1,29 @@
+/**
+* Cutscene that creates ghosts of employees after final boss has been killed
+*
+*/
+
+  SCRIPT createGhosts
+
+  .redef obj.script.slave hashPtr.1
+
+  .redef obj.hud this._tmp
+  
+	SET_CUTSCENE_OPTIONAL
+
+  SCRIPT_NEW_TRY lifeform.ghost.CLS.PTR VOID 0 0 0 0 SPRITE.ghost.orkan.PTR lifeform.fireball.CLS.PTR
+  LOOP 67
+  LOOP
+  SCRIPT_NEW_TRY lifeform.ghost.CLS.PTR VOID 0 0 0 0 SPRITE.ghost.fausto.PTR lifeform.fireball.CLS.PTR
+  LOOP 67
+  LOOP
+  SCRIPT_NEW_TRY lifeform.ghost.CLS.PTR VOID 0 0 0 0 SPRITE.ghost.philomena.PTR lifeform.fireball.CLS.PTR
+
+  CUTSCENE_WAIT
+
+  HUD_DISABLE obj.hud
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.feelWrath FALSE
+  WAIT_FOR obj.script.slave
+  HUD_ENABLE obj.hud
+
+  DIE

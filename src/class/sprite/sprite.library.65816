@@ -1,0 +1,1927 @@
+/**
+* Helper functions for OAM metasprite animation display
+*
+*/
+
+.include "src/class/sprite/sprite.library.h"
+.section "sprite.library"
+
+  METHOD init
+  METHOD play
+  METHOD kill
+  TRIGGER_ERROR E_abstractClass
+
+sprite.library.setupAnimationPointer:
+  AX16
+  sta.b animation.id
+  asl a
+  adc.b animation.id
+  tax
+  lda.l SpriteAnimationLUT,x
+  sta.b animation.pointer
+  lda.l SpriteAnimationLUT + 1,x
+  sta.b animation.pointer + 1
+
+  ;check animation header magic
+  ldy.w #ANIMATION.MAGIC
+  lda.b [animation.pointer], y
+  cmp.w #ANIMATION.MAGIC.VALUE
+  beq +
+    pei (animation.id)
+    TRIGGER_ERROR E_BadSpriteAnimation
+
+  ;fetch animation config
++
+  rts
+
+_startAnimationPurgeExistingInitNew:
+  AX16
+  ;always deallocate on static tiles, else allocation pool breaks
+  ;this must happen BEFORE setting new frame pointer, because it loads hash fromrom based on current animation pointer!
+  pha
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.STATIC.TILES
+  beq +
+    jsr _deallocateVramStatic
+
++
+  pla
+  jsr sprite.library.setupAnimationPointer
+
+  ldy.w #ANIMATION.MAX.TILES.NORMAL
+  lda.b [animation.pointer], y
+  ;if current animation is bigger than last one, clear allocation, allocate new
+  cmp animation.tiles.length
+  bcc +
+  beq +
+    ;only store if bigger than last. could use another variable to differentiate between allocation and actual frame tilelength to speed up uploads
+    sta.b animation.tiles.length
+    jsr _deallocateVramDynamic
++
+
+  ldy.w #ANIMATION.MAX.TILES.BIG
+  lda.b [animation.pointer], y
+  cmp oam.tilesBig.length
+  bcc +
+  beq +
+    ;only store if bigger than last. could use another variable to differentiate between allocation and actual frame tilelength to speed up uploads
+    sta.b oam.tilesBig.length
+    jsr _deallocateVramDynamic
+
++
+  ;reallocate if hash differs
+  ldy.w #ANIMATION.PALETTE.HASH
+  lda.b [animation.pointer], y
+  cmp animation.palette.hash
+  beq +
+    jsr _deallocateCgram
+
+    ldy.w #ANIMATION.PALETTE.HASH
+    lda.b [animation.pointer], y
+    sta.b animation.palette.hash
+
+    ldy.w #ANIMATION.MAX.PALETTE
+    lda.b [animation.pointer], y
+    sta.b animation.palette.length
+  
+
++
+
+  lda animation.buffer.flags
+  bne +
+    lda.w #OAM.PRIORITY.3
+    sta animation.buffer.flags
+
++
+
+  ;reset uploaded bits
+  lda.w #(ANIMATION.FLAGS.STATIC.TILES | ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES | ANIMATION.FLAGS.UPLOADED.PALETTES | ANIMATION.FLAGS.UPLOADED.TILES_BIG | ANIMATION.FLAGS.UPLOADED.TILEMAP)
+  trb.b animation.flags.static
+
+  ldy.w #ANIMATION.FLAGS.STATIC
+  sep #$20
+  lda.b [animation.pointer], y
+  tsb.b animation.flags.static
+  rep #$31
+
+  ldy.w #ANIMATION.LOOPSTART
+  lda.b [animation.pointer], y
+  ldy.w #ANIMATION.MAX.FRAMES
+  cmp.b [animation.pointer], y  
+  beq +
+  bcc +
+    pei (animation.id)
+    TRIGGER_ERROR E_BadSpriteAnimation
+
++  
+  rts
+
+_startAnimationRoundup:
+  AX16
+  stz.b animation.frame.current
+  stz.b animation.frame.last
+  dec.b animation.frame.last
+
+  ldy.w #ANIMATION.SIZE.X
+  lda.b [animation.pointer], y
+  sta.b dimension.size.x
+
+  ldy.w #ANIMATION.SIZE.Y
+  lda.b [animation.pointer], y
+  sta.b dimension.size.y
+
+  sep #$20
+ 
+  ldy.w #ANIMATION.FRAMERATE.MASK
+  lda.b [animation.pointer], y
+  sta.b animation.speed
+ 
+  rep #$31
+  lda.w #ANIMATION.FLAGS.IS_PLAYING
+  tsb animation.flags.static  
+
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.CENTER_ON_INIT
+  beq +
+    jsr interface.dimension.center
+
++
+
+;dont separate from above function!
+sprite.library.initOamVars:
+  AX16
+  ;32x32 tile base main table index
+  lda oam.tilesBig.start
+  sec
+  sbc.w GLOBAL.oam.vram.start
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a      
+  and.w #$3c
+
+  asl a
+  asl a
+  sta oam.tilesBig.maintable
+
+  ;setup tile id
+  lda animation.tiles.start
+  sec
+  sbc.w GLOBAL.oam.vram.start
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  sta oam.buffer.flags
+
+
+  ;setup pre-shifted palette offset
+  lda animation.palette.start
+  lsr a ;divide by $20
+  lsr a
+  lsr a
+  lsr a
+  and.w #OAM.PALETTE.BITS
+  xba
+  ora oam.buffer.flags
+  sta oam.buffer.flags
+
+  lda animation.buffer.flags
+  xba
+  and.w #OAM.FORMAT.PRIORITY
+  ora oam.buffer.flags
+  sta oam.buffer.flags
+
+  lda oam.buffer.flags
+  and.w #$1ff ~$ffff
+  sta oam.buffer.flagsBig
+
+  lda oam.tilesBig.start
+  sec
+  sbc.w GLOBAL.oam.vram.start
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  ora oam.buffer.flagsBig
+  sta oam.buffer.flagsBig
+  rts
+
+_checkAnimationDiffers:
+  AX16
+  ;check if requested animation actually differs
+  pha
+  asl a
+  clc
+  adc 1,s
+  tax
+  lda.l SpriteAnimationLUT,x
+  clc
+  adc.l SpriteAnimationLUT + 1,x
+  pha
+
+  lda.b animation.id
+  asl a
+  adc.b animation.id
+  tax
+  lda.l SpriteAnimationLUT,x
+  clc
+  adc.l SpriteAnimationLUT + 1,x
+  cmp 1,s
+  clc
+  bne +
+    sec
+
++
+  pla
+  pla
+  rts
+
+sprite.library.restartAnimation:
+  AX16
+  sta animation.id
+  
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.NO_RESTART
+  bne +
+
+  lda.w #ANIMATION.FLAGS.IS_PLAYING
+  tsb animation.flags.static
+
+  stz.b animation.frame.current
+  stz.b animation.frame.last
+  dec.b animation.frame.last
+
++
+  rts
+
+
+/**
+* start animation, allocate required memory
+*
+* @param a<int, 16bit>	animation id, @see SpriteAnimationLUT.
+*
+* @return c<bool>	true if init ok. could fail if no more vram space left or something like that.
+*/
+sprite.library.startAnimation:
+  AX16
+  jsr _checkAnimationDiffers
+  bcs sprite.library.restartAnimation
+  
+  jsr _startAnimationPurgeExistingInitNew
+
+  jsr _allocateMemory
+
+  jsr _startAnimationRoundup
+
+  ;play once
+  jsr sprite.library.playInitial
+  sec
+  rts
+
+extern.Sprite.restartAnimation:
+  AX16
+  sta animation.id
+  
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.NO_RESTART
+  bne +
+    lda.w #ANIMATION.FLAGS.IS_PLAYING
+    tsb animation.flags.static
+
+    stz.b animation.frame.current
+    stz.b animation.frame.last
+    dec.b animation.frame.last
+
++
+  rtl
+
+extern.Sprite.startAnimation:
+  AX16
+  jsr _checkAnimationDiffers
+  bcs extern.Sprite.restartAnimation
+  
+  jsr _startAnimationPurgeExistingInitNew
+
+  jsr _allocateMemory
+
+  jsr _startAnimationRoundup
+
+  ;play once
+  jsr sprite.library.playInitial
+  sec
+  rtl
+
+/**
+* start animation, allocate required memory. doesn't throw error on allocation problem
+*
+* @param a<int, 16bit>  animation id, @see SpriteAnimationLUT.
+*
+* @return c<bool>   true if init ok. could fail if no more vram space left or something like that.
+*/
+sprite.library.startAnimation.try:
+  AX16
+  jsr _checkAnimationDiffers
+  bcs sprite.library.restartAnimation
+
+  jsr _startAnimationPurgeExistingInitNew
+
+  jsr sprite.library.allocate.failsafe
+  bcs +
+    ;no more space left, fail gracefully & return
+    jsr sprite.library.deallocate
+    clc
+    rts
+
++
+  jsr _startAnimationRoundup
+
+  jsr sprite.library.playInitial
+  sec
+  rts
+
+
+sprite.library.stopAnimation:
+  AX16
+  lda.w #ANIMATION.FLAGS.IS_PLAYING
+  trb animation.flags.static
+  rts
+
+extern.Sprite.stopAnimation:
+  AX16
+  lda.w #ANIMATION.FLAGS.IS_PLAYING
+  trb animation.flags.static
+  rtl
+
+
+animation.library.setupFramePointer:
+_setupFramePointer:
+  AX16
+  lda.b animation.frame.current
+  cmp animation.frame.last
+  beq +
+    asl a
+    adc.w #ANIMATION.FRAME.POINTER
+    tay
+    lda.b animation.pointer+1
+    sta.b animation.frame.pointer+1
+
+    lda.b [animation.pointer],y
+    clc
+    adc.b animation.pointer
+    sta.b animation.frame.pointer
+
++
+  rts
+
+sprite.library.resetFrameFlags:
+_resetFrameFlags:
+  AX16
+  ;if static, dont reset uploaded flag on frame transition
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.STATIC.PALETTES
+  bne ++++
+    lda.w #ANIMATION.FLAGS.UPLOADED.PALETTES
+    trb animation.flags.static
+
+++++
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.STATIC.TILES
+  bne ++++
+    lda.w #(ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.UPLOADED.TILES_BIG)
+    trb animation.flags.static
+    rts
+
+++++
+  lda.w #ANIMATION.FLAGS.UPLOADED.TILEMAP
+  trb animation.flags.static
+  rts
+
+sprite.library.playAnimation:
+  AX16
+  jsr sprite.library.uploadCurrentFrame
+
+
+;dont move this, above function depends on it!
+animation.library.advanceFramePointer:
+_advanceFramePointer:
+  AX16
+  ;don't fumble with frame pointer until at least the first frame has been uploaded
+  lda.b animation.flags.static
+  and.w #(ANIMATION.FLAGS.ANY.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES)
+  cmp.w #(ANIMATION.FLAGS.ANY.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES)
+  bne +++
+
+
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.IS_PLAYING
+
+  beq +++
+
+    lda.b animation.speed
+    and.b animation.timer
+    and.w #$ff
+    bne +++
+
+
+      lda.b animation.frame.delay
+      and.w #$ff
+      beq ++++
+        dec.b animation.frame.delay
+        bra +++
+
+
+++++
+      lda.b animation.frame.current
+      inc a
+      ldy.w #ANIMATION.MAX.FRAMES
+      cmp.b [animation.pointer], y
+      bcc ++
+        lda animation.flags.static
+        bit.w #ANIMATION.FLAGS.IS_LOOPING
+        beq +
+          ldy.w #ANIMATION.LOOPSTART
+          lda.b [animation.pointer], y
+          bra ++
+
++
+            lda.w #ANIMATION.FLAGS.IS_PLAYING
+            trb animation.flags.static
+
+            ldy.w #ANIMATION.MAX.FRAMES
+            lda.b [animation.pointer], y            
+            dec a
+            sta.b animation.frame.last
+
+++  sta.b animation.frame.current
+    ;only reset frame flags if frame actually changed
+    cmp.b animation.frame.last
+    beq +++
+      jsr _resetFrameFlags
+
++++
+  rts
+
+_commitFrameData:
+  AX16
+  jsr _setupFramePointer
+
+  ;@todo: handle packed sprite tiles
+  ldy.w #ANIMATION.FRAME.TILES.NORMAL.LENGTH
+  lda.b [animation.frame.pointer],y
+.if DEBUG == 1  
+  cmp.b animation.tiles.length
+  bcc +
+  beq +
+    pei (animation.id)
+    pei (animation.frame.current)
+    TRIGGER_ERROR E_AllocatedVramExceeded
+
++
+  lda.b [animation.frame.pointer],y ;make sure zero flag is set correctly
+.endif
+  sta.b animation.frame.tiles.length
+
+  ldy.w #ANIMATION.FRAME.TILES.BIG.LENGTH
+  lda.b [animation.frame.pointer],y
+.if DEBUG == 1  
+  cmp.b oam.tilesBig.length
+  bcc +
+  beq +
+    pei (animation.id)
+    pei (animation.frame.current)
+    TRIGGER_ERROR E_AllocatedVramExceeded
+
++
+  lda.b [animation.frame.pointer],y ;make sure zero flag is set correctly
+.endif
+  sta.b oam.frame.tilesBig.length
+
+  lda.b animation.flags.static
+  bit.w #ANIMATION.FLAGS.ANY.UPLOADED.TILES
+  beq +
+    lda.b oam.frame.tilesBig.length
+    clc
+    adc.b animation.frame.tiles.length
+    adc.w GLOBAL.dmaQueueChannel.size.total
+    cmp #DMA_TRANSFER.TRANSFER.MAX
+    bcc +
+      ;if frame not changed, refresh tilemap (x-mirror change)
+      lda.b animation.frame.current
+      cmp.b animation.frame.last
+      bne ++
+        jsr _doTilemapBig
+        jsr _doTilemapNormal
+
+++      
+      jmp _skipTileUpload
+
++    
+
+  ;no tiles present? must set up tilemap pointer and flag nevertheless
+  lda.b oam.frame.tilesBig.length
+  beq +++
+      ;static and already uploaded? dont care about transfer 
+      lda.b animation.flags.static
+      and.w #(ANIMATION.FLAGS.UPLOADED.TILES_BIG | ANIMATION.FLAGS.STATIC.TILES)
+      cmp.w #(ANIMATION.FLAGS.UPLOADED.TILES_BIG | ANIMATION.FLAGS.STATIC.TILES)
+      beq +++
+
+      lda.b oam.frame.tilesBig.length
+      clc
+      adc.w GLOBAL.dmaQueueChannel.size.total
+      cmp #DMA_TRANSFER.TRANSFER.MAX
+      bcs +
+
+      lda.b animation.flags.static
+      bit.w #ANIMATION.FLAGS.UPLOADED.TILES_BIG
+      bne +++
+
+++
+_doTilesBig:
+      tsx
+      ldy.w #ANIMATION.FRAME.TILES.NORMAL.POINTER
+      lda.b [animation.frame.pointer],y
+      clc
+      adc animation.frame.pointer      
+      clc
+      ldy.w #ANIMATION.FRAME.TILES.NORMAL.LENGTH
+      adc.b [animation.frame.pointer],y
+      tay
+
+      sep #$20
+      lda #DMA_TRANSFER.VRAM.SPRITETILE.32X32  ;transfer type
+      pha
+      phy
+      lda.b animation.frame.pointer+2
+      pha
+      rep #$31
+
+      pei (oam.tilesBig.start)
+      pei (oam.frame.tilesBig.length)
+      jsr core.dma.registerTransfer
+      txs
+
++++
+      jsr _doTilemapBig
+
+      lda #ANIMATION.FLAGS.UPLOADED.TILES_BIG
+      tsb.b animation.flags.static
+
++
+
+  lda.b animation.frame.tiles.length
+  ;no tiles present? must set up tilemap pointer and flag nevertheless
+  beq +++
+      ;static and already uploaded? dont care about transfer 
+      lda.b animation.flags.static
+      and.w #(ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.STATIC.TILES)
+      cmp.w #(ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.STATIC.TILES)
+      beq +++
+
+      lda.b animation.frame.tiles.length
+      clc
+      adc.w GLOBAL.dmaQueueChannel.size.total
+      cmp #DMA_TRANSFER.TRANSFER.MAX
+      bcs +
+
+      lda.b animation.flags.static
+      bit.w #ANIMATION.FLAGS.UPLOADED.TILES
+      bne +++
+
+++
+_doTilesNormal:
+      tsx
+      ldy.w #ANIMATION.FRAME.TILES.NORMAL.POINTER
+      lda.b [animation.frame.pointer],y
+      clc
+      adc animation.frame.pointer
+      tay      
+
+      sep #$20
+      lda #DMA_TRANSFER.VRAM  ;transfer type
+      pha
+      phy
+      lda animation.frame.pointer+2
+      pha
+      rep #$31
+
+      pei (animation.tiles.start)
+      pei (animation.frame.tiles.length)
+
+      jsr core.dma.registerTransfer
+      txs
+
++++
+      jsr _doTilemapNormal
+
+      lda #ANIMATION.FLAGS.UPLOADED.TILES
+      tsb.b animation.flags.static
+
++
+
+_skipTileUpload:
+  ldy.w #ANIMATION.FRAME.PALETTE.LENGTH
+  lda.b [animation.frame.pointer],y
+.if DEBUG == 1
+  cmp.b animation.palette.length
+  bcc +
+  beq +
+    pei (animation.id)
+    pei (animation.frame.current)
+      TRIGGER_ERROR E_AllocatedCgramExceeded
+
++
+  lda.b [animation.frame.pointer],y ;make sure zero flag is set correctly
+.endif
+  sta.b animation.frame.palette.length
+  beq +
+    lda.b animation.flags.static
+    bit.w #ANIMATION.FLAGS.ANY.UPLOADED.PALETTES
+    beq ++
+      lda.b animation.frame.palette.length
+      clc
+      adc.w GLOBAL.dmaQueueChannel.size.total
+      cmp #DMA_TRANSFER.TRANSFER.MAX
+      bcs +
+
+      lda.b animation.flags.static
+      bit.w #ANIMATION.FLAGS.UPLOADED.PALETTES
+      bne +
+
+++
+_doPalette:
+      tsx
+      ldy.w #ANIMATION.FRAME.PALETTE.POINTER
+      lda.b [animation.frame.pointer],y
+      clc
+      adc animation.frame.pointer
+      tay
+
+      sep #$20
+      lda #DMA_TRANSFER.CGRAM ;transfer type
+      pha
+      phy
+      lda animation.frame.pointer+2
+      pha
+      rep #$31
+
+      pei (animation.palette.start)
+      pei (animation.frame.palette.length)
+
+      jsr core.dma.registerTransfer
+      txs
+
+      lda.w #(ANIMATION.FLAGS.UPLOADED.PALETTES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES)
+      tsb.b animation.flags.static
+
+
++
+
+  ldy.w #ANIMATION.FRAME.TILEMAP.NORMAL.LENGTH
+  lda.b [animation.frame.pointer],y
+  ldy.w #ANIMATION.FRAME.TILEMAP.BIG.LENGTH
+  clc
+  adc.b [animation.frame.pointer],y  
+  sta.b animation.frame.tilemap.length
+
+  lda.b animation.frame.current
+  cmp.b animation.frame.last
+  beq +
+    ldy.w #ANIMATION.FRAME.DELAY
+    lda.b [animation.frame.pointer],y
+    sep #$20
+    sta.b animation.frame.delay
+    rep #$31
+
++
+
+  ;if both tiles have been uploaded, tilemaps have been updated aswell and flag can be set
+  lda.b animation.flags.static
+  and.w #(ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.UPLOADED.TILES_BIG)
+  cmp.w #(ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.UPLOADED.TILES_BIG)
+  bne +
+    lda.w #(ANIMATION.FLAGS.UPLOADED.TILEMAP | ANIMATION.FLAGS.ANY.UPLOADED.TILES)
+    tsb.b animation.flags.static
+    ;only clear uploaded flag after data has actually been uploaded
+    lda.b animation.frame.current
+    sta.b animation.frame.last
+
++
+
+  rts
+
+_doTilemapBig:
+  AX16
+      ;setup corresponding tilemap length big
+      ldy.w #ANIMATION.FRAME.TILEMAP.BIG.LENGTH
+      lda.b [animation.frame.pointer],y
+      lsr a ;each tile 4 bytes
+      lsr a
+      eor.w #$ffff
+      inc a
+      clc
+      adc.w #SPRITE.TILE_BIG.MAX-1
+      asl a
+      sta oam.current.big.length
+
+      ;setup corresponding tilemap pointer big
+      ldy.w #ANIMATION.FRAME.TILEMAP.NORMAL.POINTER
+      lda animation.flags.static
+      bit.w #ANIMATION.FLAGS.X_MIRROR
+      beq ++
+        ldy.w #ANIMATION.FRAME.TILEMAP.XMIRROR.NORMAL.POINTER
+
+++
+      lda.b [animation.frame.pointer],y
+      clc
+      adc animation.frame.pointer
+      ldy.w #ANIMATION.FRAME.TILEMAP.NORMAL.LENGTH
+      clc
+      adc.b [animation.frame.pointer],y
+      sta oam.current.big.pointer
+  rts
+
+_doTilemapNormal:
+  AX16
+      ;setup corresponding tilemap length
+      ldy.w #ANIMATION.FRAME.TILEMAP.NORMAL.LENGTH
+      lda.b [animation.frame.pointer],y
+      lsr a ;each tile 4 bytes
+      lsr a
+      eor.w #$ffff
+      inc a
+      clc
+      adc.w #SPRITE.TILE.MAX-1
+      asl a
+      sta oam.current.normal.length
+
+      ;setup corresponding tilemap pointer
+      ldy.w #ANIMATION.FRAME.TILEMAP.NORMAL.POINTER
+      lda animation.flags.static
+      bit.w #ANIMATION.FLAGS.X_MIRROR
+      beq ++
+        ldy.w #ANIMATION.FRAME.TILEMAP.XMIRROR.NORMAL.POINTER
+
+++
+      lda.b [animation.frame.pointer],y
+      clc
+      adc animation.frame.pointer
+      sta oam.current.normal.pointer
+
+  rts  
+
+sprite.library.playInitial:
+  AX16
+  sep #$20
+  inc animation.timer
+  rep #$31
+
+  ldy.w #ANIMATION.MAX.FRAMES
+  lda.b [animation.pointer], y
+  bne +
+    rts
+
++
+
+  jsr sprite.library.checkOnScreen
+  bcs +
+    ;make sure commit is run unconditionally if nothing uploaded yet
+    ;this cant happen before checkonscreen, which calculates
+    lda.b animation.flags.static
+    and.w #(ANIMATION.FLAGS.ANY.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES)
+    cmp.w #(ANIMATION.FLAGS.ANY.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES)
+    beq ++
+      ;force commit if nothing uploaded, even though offscreen
+      jmp _commitFrameData
+
+++    
+    rts
+
++
+  lda.b animation.flags.static
+  and.w #(ANIMATION.FLAGS.UPLOADED.TILES_BIG | ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.UPLOADED.PALETTES | ANIMATION.FLAGS.UPLOADED.TILEMAP)
+  cmp.w #(ANIMATION.FLAGS.UPLOADED.TILES_BIG | ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.UPLOADED.PALETTES | ANIMATION.FLAGS.UPLOADED.TILEMAP)
+  beq +
+    ;setup frame pointer, set length, do transfer
+    jsr _commitFrameData
+
++ 
+
+.if IS_3D == 1
+  ;more or less a hack for isometric games
+  lda dimension.position.y+1
+  clc
+  adc dimension.size.y
+  sta dimension.position.sort
+.endif
+  rts
+
+sprite.library.commitOnly:
+  AX16
+    lda.b animation.flags.static
+    and.w #(ANIMATION.FLAGS.ANY.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES)
+    cmp.w #(ANIMATION.FLAGS.ANY.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES)
+    beq ++
+      ;force commit if nothing uploaded, even though offscreen
+      jmp _commitFrameData
+
+++    
+    rts
+  
+sprite.library.pauseAnimation:
+sprite.library.uploadCurrentFrame:
+  AX16
+  sep #$20
+  inc animation.timer
+  rep #$31
+
+  ldy.w #ANIMATION.MAX.FRAMES
+  lda.b [animation.pointer], y
+  bne +
+    rts
+
++
+
+  jsr sprite.library.checkOnScreen
+  bcs +
+    ;make sure commit is run unconditionally if nothing uploaded yet
+    ;this cant happen before checkonscreen, which calculates
+    lda.b animation.flags.static
+    and.w #(ANIMATION.FLAGS.ANY.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES)
+    cmp.w #(ANIMATION.FLAGS.ANY.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES)
+    beq ++
+      ;force commit if nothing uploaded, even though offscreen
+      jmp _commitFrameData
+
+++    
+    rts
+
++
+  lda.b animation.flags.static
+  and.w #(ANIMATION.FLAGS.UPLOADED.TILES_BIG | ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.UPLOADED.PALETTES | ANIMATION.FLAGS.UPLOADED.TILEMAP)
+  cmp.w #(ANIMATION.FLAGS.UPLOADED.TILES_BIG | ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.UPLOADED.PALETTES | ANIMATION.FLAGS.UPLOADED.TILEMAP)
+  beq +
+    ;setup frame pointer, set length, do transfer
+    jsr _commitFrameData
+
++ 
+
+.if IS_3D == 1
+  ;more or less a hack for isometric games
+  lda dimension.position.y+1
+  clc
+  adc dimension.size.y
+  sta dimension.position.sort
+.endif
+
+;don't move this away, previous routine goes here immediately!
+/*tilemap as data with half-offscreen optimization and 2bit-sized hioam
+  data loads with dp indirect indexed,y are 7 instead of 3 cycles, but whatevs.
+  off-screen optimization should compensate
+  also, try to push target adresses for both normal and big tilemap, then just keep on returning
+*/
+sprite.library.writeOamBuffer:
+  AX16
+  ;@todo: should be correct, but causes no sprites to be displayed. WTF?
+  lda.b animation.flags.static
+  bit.w #ANIMATION.FLAGS.UPLOADED.TILEMAP
+  beq _abort
+
+  lda.b animation.frame.tilemap.length
+  beq _abort
+
+    tay
+    ;oam overflow?
+    clc
+    adc.w GLOBAL.currentOamSlot
+    cmp.w #GLOBAL.oamBuffer.end - GLOBAL.oamBuffer
+    bcs _abort
+
+      ldx.w GLOBAL.currentOamSlot
+      sta.w GLOBAL.currentOamSlot
+
+      lda animation.displacement.x
+      bmi _halfOffscreen
+
+      lda animation.displacement.y
+      bmi _halfOffscreen
+
+      lda animation.displacement.x
+      clc
+      adc dimension.size.x
+      cmp.w #SCREEN.SIZE-1
+      bcs _halfOffscreen
+
+      lda animation.displacement.y
+      clc
+      adc dimension.size.y
+      cmp.w #SCREEN.SIZE-1
+      bcs _halfOffscreen
+
+      jsl extern.sprite.writeOamBuffer.nocheck
+
+      lda.w #2    ;counter to two. first for actual upload, second for cleared buffer upload(if frame doesnt contain any more active sprites)
+      tsb.w GLOBAL.oamUploadFlag
+
+_abort:
+  sec
+  rts
+
+_halfOffscreen:
+  jsl extern.sprite.writeOamBuffer.docheck
+  lda.w #2    ;counter to two. first for actual upload, second for cleared buffer upload(if frame doesnt contain any more active sprites)
+  tsb.w GLOBAL.oamUploadFlag
+  sec
+  rts
+
+sprite.library.checkOnScreen:
+  AX16
+  ;skip screen-relativeness if sprite is positioned absolutly
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.POSITION_ABSOLUTE
+  bne +
+    /*
+    relative. onscreen:
+      obj.x+obj.sz.x > scr.x
+      && scr.x+scr.sz.x > obj.x
+
+    */
+    lda dimension.position.x + 1
+    clc
+    adc dimension.size.x
+    cmp.w (GLOBAL.screen.position.x &$ffff) +1
+    bcc ++
+
+    lda.w (GLOBAL.screen.position.x &$ffff) +1
+    clc
+    adc.w #SCREEN.DEFAULT.SIZE.X
+    cmp dimension.position.x + 1
+    bcc ++
+
+    lda dimension.position.y + 1
+    clc
+    adc dimension.size.y
+    cmp.w (GLOBAL.screen.position.y &$ffff) +1
+    bcc ++
+
+    lda.w (GLOBAL.screen.position.y &$ffff) +1
+    clc
+    adc.w #SCREEN.DEFAULT.SIZE.Y
+    cmp dimension.position.y + 1
+    bcc ++
+
+    ;calculate position on screen
+    lda.b dimension.position.x + 1
+    sec
+    sbc.w (GLOBAL.screen.position.x &$ffff) +1
+    sta.b animation.displacement.x
+
+    lda.b dimension.position.y + 1
+.if IS_3D == 1
+    clc
+    adc.b dimension.position.z + 1  
+.endif    
+    sec
+    sbc.w (GLOBAL.screen.position.y &$ffff) +1
+    sta.b animation.displacement.y
+    lda.w #OBJECT.PROPERTIES.isOnScreen
+    tsb.b iterator.properties
+    sec
+    rts
+
++
+  ;absolute, always onscreen
+  lda.b dimension.position.x + 1
+  sta.b animation.displacement.x
+  lda.b dimension.position.y + 1
+.if IS_3D == 1
+  clc
+  adc.b dimension.position.z + 1  
+.endif  
+  sta.b animation.displacement.y
+  lda.w #OBJECT.PROPERTIES.isOnScreen
+  tsb.b iterator.properties
+  sec
+  rts
+
+++
+;fail
+  lda.w #OBJECT.PROPERTIES.isOnScreen
+  trb.b iterator.properties    
+  clc
+  rts
+
+animation.library.setDisplacement:
+  AX16
+  lda.b dimension.position.x + 1
+  sta.b animation.displacement.x
+  lda.b dimension.position.y + 1
+.if IS_3D == 1
+  clc
+  adc.b dimension.position.z + 1  
+.endif
+  sta.b animation.displacement.y
+
+  ;skip screen-relativeness if sprite is positioned absolutly
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.POSITION_ABSOLUTE
+  bne +
+    ;calculate position on screen
+    lda.b dimension.position.x + 1
+    sec
+    sbc.w (GLOBAL.screen.position.x &$ffff) +1
+    sta.b animation.displacement.x
+
+    lda.b dimension.position.y + 1
+.if IS_3D == 1
+    clc
+    adc.b dimension.position.z + 1  
+.endif    
+    sec
+    sbc.w (GLOBAL.screen.position.y &$ffff) +1
+    sta.b animation.displacement.y
+
++
+  rts
+
+
+
+sprite.library.disable:
+sprite.library.deallocate:
+  AX16
+  lda.b animation.tiles.id
+  and.w #$ff
+  beq +
+    jsr _deallocateVramTiles
+
++ lda.b animation.palette.id
+  and.w #$ff
+  beq +
+     jsr _deallocateCgram
+
++ 
+  rts
+
+
+sprite.library.allocate.failsafe:
+  AX16
+  ;don't allocate again
+  lda.b animation.tiles.id
+  and.w #$ff
+  bne ++
+    jsr _allocateVramTiles
+    bcs +
+      clc
+      rts
+
++   
+    stx.b animation.tiles.start
+    sty.b oam.tilesBig.start
+    sep #$20
+    sta.b animation.tiles.id
+    rep #$31
+
+++
+
+  ;allocate sprite palette, optionally in colorMath-space
+  ldx.w #PALETTE.START.SPRITE
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.IS_COLOR_MATH
+  beq +
+	ldx.w #PALETTE.START.SPRITE_COLORMATH
+
++ 
+  ;don't allocate again
+  lda.b animation.palette.id
+  and.w #$ff
+  bne ++
+
+  lda.b animation.palette.hash
+  beq ++
+  
+    ldy.w #ANIMATION.PALETTE.HASH
+    lda.b [animation.pointer], y
+
+    ldy.b animation.palette.length
+
+    /*auto-set palette flag here if already allocated*/
+    jsr core.cgram.pool.allocate
+    bcs +
+      stz animation.palette.hash
+      clc
+      rts
+      
++   stx.b animation.palette.start
+    ;check subscriber count to find out whether static graphics have to be uploaded or not
+    sep #$20
+    sta.b animation.palette.id
+    xba
+    dec a
+    rep #$31
+    beq ++
+      lda #(ANIMATION.FLAGS.UPLOADED.PALETTES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES)
+      tsb.b animation.flags.static
+
+++
+  
+  sec
+  rts
+
+
+sprite.library.allocateMemory:
+_allocateMemory:
+  AX16
+  ;don't allocate again
+  lda.b animation.tiles.id
+  and.w #$ff
+  bne ++
+
+    jsr _allocateVramTiles
+    bcs +
+      pei (animation.tiles.length)
+      TRIGGER_ERROR E_OutOfVram
+
++   stx.b animation.tiles.start
+    sty.b oam.tilesBig.start
+    sep #$20
+    sta.b animation.tiles.id
+    rep #$31
+
+++
+
+  ;allocate sprite palette, optionally in colorMath-space
+  ldx.w #PALETTE.START.SPRITE
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.IS_COLOR_MATH
+  beq +
+    ldx.w #PALETTE.START.SPRITE_COLORMATH
+
++ 
+  ;don't allocate again
+  lda.b animation.palette.id
+  and.w #$ff
+  bne ++
+
+  lda.b animation.palette.hash
+  beq ++
+
+    ldy.w #ANIMATION.PALETTE.HASH
+    lda.b [animation.pointer], y
+
+    ldy.b animation.palette.length
+
+    jsr core.cgram.pool.allocate
+    bcs +
+      pei (animation.palette.length)
+      TRIGGER_ERROR E_OutOfCgram
+
++   stx.b animation.palette.start
+    ;check subscriber count to find out whether static graphics have to be uploaded or not
+    sep #$20
+    sta.b animation.palette.id
+    xba
+    dec a
+    rep #$31
+    beq ++
+      lda #(ANIMATION.FLAGS.UPLOADED.PALETTES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES)
+      tsb.b animation.flags.static
+
+++
+  
+  sec
+  rts
+
+
+_deallocateCgram:
+  AX16
+  lda.b animation.palette.hash
+  beq ++
+      jsr core.cgram.pool.deallocate
+
+++
+  lda #ANIMATION.FLAGS.UPLOADED.PALETTES
+  trb.b animation.flags.static
+  sep #$20
+  stz.b animation.palette.id
+  rep #$31
+  rts
+
+_deallocateVramStatic:
+  AX16
+  lda #(ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.UPLOADED.TILES_BIG)
+  trb.b animation.flags.static    
+  lda.b animation.tiles.id
+  and.w #$ff
+  beq +
+    ldy.w #ANIMATION.TILES.HASH
+    lda.b [animation.pointer], y
+    jsr core.oam_tiles.pool.deallocate
+    sep #$20
+    stz.b animation.tiles.id  
+    rep #$31
++
+  rts
+
+_deallocateVramDynamic:
+  AX16
+  lda #(ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.UPLOADED.TILES_BIG)
+  trb.b animation.flags.static
+  lda.b animation.tiles.id
+  and.w #$ff
+  beq +
+    sep #$20
+    jsr core.vram.deallocate
+    stz.b animation.tiles.id
+    rep #$31
++
+  rts
+
+_deallocateVramTiles:
+  AX16
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.STATIC.TILES
+  beq +
+    jmp _deallocateVramStatic
+
++
+  jmp _deallocateVramDynamic
+
+
+_allocateVramTiles:
+  AX16
+  php
+  rep #$31
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.STATIC.TILES
+  beq +
+    ldy.w #ANIMATION.TILES.HASH
+    lda.b [animation.pointer], y
+    ldy.b animation.tiles.length
+    ldx.b oam.tilesBig.length
+    plp
+
+    jsr core.oam_tiles.pool.allocate
+    bcs +++
+      ;silent fail. callee must handle error trigger
+      rts
+
++++
+    php
+    pha
+    ;check subscriber count to find out whether static graphics have to be uploaded or not
+    sep #$20
+    xba
+    dec a
+    rep #$31
+    beq ++
+      lda #(ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.TILES)
+      tsb.b animation.flags.static
+
+++
+    pla
+    plp
+    rts
+
++
+  ;probably obsolete. check where initialization occurs before removal
+  lda.w #SPRITE.TILE.GRANULARITY
+  ldx.b animation.tiles.length
+  plp
+
+  ldy.b oam.tilesBig.length
+  jmp core.vram.allocate.tile.sprite
+
+
+sprite.library.setFrame:
+  ;force upload
+  php
+  rep #$31
+.if DEBUG == 1  
+  ldy.w #ANIMATION.MAX.FRAMES
+  cmp.b [animation.pointer], y  
+  bcc +
+    pei (animation.id)
+    TRIGGER_ERROR E_IndexError
+
++
+.endif
+  sta.b animation.frame.current
+  dec a
+  sta.b animation.frame.last
+  jsr _resetFrameFlags
+  plp
+  rts
+
+
+sprite.library.enable:
+  AX16
+  lda.w #(ANIMATION.FLAGS.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.TILES | ANIMATION.FLAGS.ANY.UPLOADED.PALETTES | ANIMATION.FLAGS.UPLOADED.PALETTES | ANIMATION.FLAGS.UPLOADED.TILES_BIG | ANIMATION.FLAGS.UPLOADED.TILEMAP)
+  trb.b animation.flags.static
+
+  jsr sprite.library.allocateMemory
+  jsr sprite.library.initOamVars
+  ;force upload
+  ;also force first frame so that static sprite is guaranteed to get uploaded
+  stz.b animation.frame.current
+  lda.b animation.frame.current
+  dec a
+  sta.b animation.frame.last
+    
+  jmp sprite.library.uploadCurrentFrame
+
+.if IS_3D == 1
+sprite.library.drawShadow:
+  AX16
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  tax
+
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  tay
+
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.POSITION_ABSOLUTE
+  bne +
+    jmp core.oam.drawShadow
+
++
+  jmp core.oam.drawShadowAbsolute
+.endif
+
+
+sprite.library.kill:
+  jsr sprite.library.deallocate
+  jmp object.library.kill
+
+
+sprite.library.toBaseline:
+  AX16
+  lda dimension.size.x
+  lsr a
+  pha
+  sta dimension.collision.basepoint.x
+  lda dimension.position.x+1
+  sec
+  sbc 1,s
+  sta dimension.position.x+1
+  pla
+
+  lda dimension.position.y+1
+  sec
+  sbc dimension.size.y
+  sta dimension.position.y+1
+  
+  lda dimension.size.y
+  sta dimension.collision.basepoint.y
+  rts
+
+;a: bounce sound effect. 0 = void
+sprite.library.bounce:
+  AX16
+  pha
+
+  pea 0
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  lsr a
+  lsr a
+  lsr a
+  sta 1,s
+  lda dimension.position.last.y
+  clc
+  adc dimension.collision.basepoint.y
+  lsr a
+  lsr a
+  lsr a
+  cmp 1,s
+  bne ++
+
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  lsr a
+  lsr a
+  lsr a
+  sta 1,s
+  lda dimension.position.last.x
+  clc
+  adc dimension.collision.basepoint.x
+  lsr a
+  lsr a
+  lsr a
+  cmp 1,s
+  beq +
+
+++
+    pei (dimension.position.y+1)
+    pei (dimension.position.x+1)
+    jsr level.library.getCollisionTile
+    plx
+    ply
+
+    ;tile not walkable? reverse direction
+    jsr collision.library.isWalkable  
+    bcs +
+      lda dimension.speed.x
+      eor.w #$ffff
+      inc a
+      sta dimension.speed.x
+      lda dimension.speed.y
+      eor.w #$ffff
+      inc a
+      sta dimension.speed.y
+
+      lda dimension.position.last.y
+      sta dimension.position.y+1
+      lda dimension.position.last.x
+      sta dimension.position.x+1
+
+      lda 3,s
+      beq +
+        jsr interface.dimension.playSoundEffect
+
+
++
+  ;keep last position
+  lda dimension.position.y+1
+  sta dimension.position.last.y
+  lda dimension.position.x+1
+  sta dimension.position.last.x
+  pla
+
+  
+
+
+.if IS_3D == 1  
+  lda dimension.speed.x
+  jsr core.math.abs
+  pha
+  lda dimension.speed.y
+  jsr core.math.abs
+  clc
+  adc 1,s
+  sta 1,s
+  pla
+  cmp.w #50
+  bcs +
+    lda dimension.position.z
+    bmi ++
+      stz dimension.speed.x
+      stz dimension.speed.y
+      stz dimension.speed.z
+      stz dimension.position.z
+      stz dimension.position.z+1
+      pla
+      clc
+      rts
+
+++
+  jsr interface.dimension.applyGravity
+  pla
+  sec
+  rts
+
++
+  lda dimension.position.z+1
+  bmi +
+    lda 1,s
+    beq ++
+      jsr interface.dimension.playSoundEffect
+
+++
+    lda animation.speed
+    sec
+    asl a
+    sta animation.speed
+
+    lda dimension.speed.x
+    jsr core.math.signed.88percent
+    sta dimension.speed.x
+
+    lda dimension.speed.y
+    jsr core.math.signed.88percent
+    sta dimension.speed.y
+
+    lda dimension.speed.z
+    jsr core.math.signed.88percent
+    sta dimension.speed.z
+
+    lda dimension.speed.z
+    ;cmp #$8000
+    ;ror a
+    eor.w #$ffff
+    inc a
+    sta dimension.speed.z
++
+  ldx dimension.speed.x
+  ldy dimension.speed.y
+  jsr dimension.library.translate
+  lda dimension.speed.z
+  jsr dimension.library.translateHeight
+  jsr interface.dimension.applyGravity
+  pla
+  sec
+  rts
+.endif    
+  jsr interface.dimension.applyGravity
+  pla
+  sec
+  rts
+
+  CLASS sprite.library
+
+.ends
+
+.base BSL
+.bank BANK.DATA
+.section "extern.sprite" superfree
+
+extern.sprite.writeOamBuffer.nocheck:
+  AX16
+  phd
+  phb
+
+  ;bigflags
+  pei (oam.tilesBig.maintable)
+  pei (oam.buffer.flagsBig)
+
+  ;combined x/y-displacement and flags
+  sep #$20
+  lda animation.frame.pointer+2
+  pha
+  plb
+  lda animation.displacement.y
+  xba
+  lda animation.displacement.x
+  rep #$31
+  pha
+  pei (oam.buffer.flags)
+
+  ;push return adress long to stack
+  pea _return-1   ;push return adress
+
+  ;push normal target unrolled pointer depending on tilemap length
+  lda oam.current.normal.length
+  and.w #$ff
+  phx
+  tax
+  lda.l extern.sprite_normal.writeOamLut,x
+  plx
+  pha
+
+  ;push normal target X
+  txa
+  clc
+  ldy.w #ANIMATION.FRAME.TILEMAP.BIG.LENGTH
+  adc.b [animation.frame.pointer],y
+  pha
+
+  ;push normal ROM pointer
+  pei (oam.current.normal.pointer)  
+
+  ;no hioam pointer req'd for normal
+
+  ;push big target
+  lda oam.current.big.length
+  and.w #$ff
+  phx
+  tax
+  lda.l extern.sprite_big.writeOamLut,x
+  plx
+  pha
+
+  ldy.b oam.current.big.pointer
+
+  txa   ;byte-sized hioam entries     
+  lsr a
+  lsr a
+  clc
+  adc.w #GLOBAL.oamBufferHi
+  tcd
+
+  ;x: oam target, relative
+  ;dp: hioam target, absolute
+  ;y: ROM source, absolute
+  ;db: ROM source bank
+  ;stack: variables
+
+  clc
+  rts
+
+_return:
+  pla
+  pla
+  pla
+  pla
+  plb
+  pld
+  rtl    
+
+
+.redef STACK_OAM_DISPLACEMENT 5
+.redef STACK_OAM_FLAGS 3
+
+;could it be that carry should never be affected here and clc can be omitted?
+.macro SPRITE_NORMAL_NOCHECK
+  lda.w $0+((SPRITE.TILE.MAX-1-\@)*4),y
+  adc STACK_OAM_DISPLACEMENT,s
+  sta.w (GLOBAL.oamBuffer&$ffff)+((SPRITE.TILE.MAX-1-\@)*4),x
+
+  ;hioam write not req'd here, zero anyway
+  lda.w $2+((SPRITE.TILE.MAX-1-\@)*4),y
+  adc STACK_OAM_FLAGS,s
+  sta.w (GLOBAL.oamBuffer&$ffff)+$2+((SPRITE.TILE.MAX-1-\@)*4),x
+_normal_nocheck.unrolled.\@:
+.endm
+
+.rept SPRITE.TILE.MAX
+  SPRITE_NORMAL_NOCHECK
+.endr
+  rts
+
+.redef STACK_OAM_DISPLACEMENT 11
+.redef STACK_OAM_FLAGS 13
+.redef STACK_OAM_MAINTABLE 15
+
+;@todo: push special bigtile flags, write here
+.macro SPRITE_BIG_NOCHECK
+  lda.w $0+((SPRITE.TILE_BIG.MAX-1-\@)*4),y
+  adc STACK_OAM_DISPLACEMENT,s
+  sta.w (GLOBAL.oamBuffer&$ffff)+((SPRITE.TILE_BIG.MAX-1-\@)*4),x
+
+  lda.w #$0002
+  tsb.b 0+(SPRITE.TILE_BIG.MAX-1-\@)
+
+  lda.w $2+((SPRITE.TILE_BIG.MAX-1-\@)*4),y
+  and.w #OAM.FORMAT.TILE
+  adc STACK_OAM_MAINTABLE,s
+  asl a
+  phx
+  tax  
+  lda.w $2+((SPRITE.TILE_BIG.MAX-1-\@)*4),y
+  and.w #(OAM.FORMAT.HFLIP | OAM.FORMAT.VFLIP | OAM.FORMAT.PRIORITY | OAM.FORMAT.PALETTE)
+  adc STACK_OAM_FLAGS+2,s
+  adc.l sprite32x32id.lut,x
+  plx
+  sta.w (GLOBAL.oamBuffer&$ffff)+$2+((SPRITE.TILE_BIG.MAX-1-\@)*4),x
+_big_nocheck.unrolled.\@:
+.endm
+
+
+.rept SPRITE.TILE_BIG.MAX
+  SPRITE_BIG_NOCHECK
+.endr
+  ply ;ROM source for normal tiles
+  plx ;oam target for normal tiles
+  rts
+
+.macro SPRITE_NORMAL_NOCHECK_POINTER
+  .dw _normal_nocheck.unrolled.\@-1 ;-1 because of rts/rtl
+.endm
+
+.macro SPRITE_BIG_NOCHECK_POINTER
+  .dw _big_nocheck.unrolled.\@-1 ;-1 because of rts/rtl
+.endm
+
+extern.sprite_normal.writeOamLut:
+.rept SPRITE.TILE.MAX
+  SPRITE_NORMAL_NOCHECK_POINTER
+.endr  
+
+extern.sprite_big.writeOamLut:
+.rept SPRITE.TILE_BIG.MAX
+  SPRITE_BIG_NOCHECK_POINTER
+.endr
+
+extern.sprite.writeOamBuffer.docheck:
+  AX16
+  phd
+  phb
+
+  ;bigflags
+  pei (oam.tilesBig.maintable)
+  pei (oam.buffer.flagsBig)
+
+  ;combined x/y-displacement and flags
+  sep #$20
+  lda animation.frame.pointer+2
+  pha
+  plb
+  rep #$31
+  pei (animation.displacement.y)
+  pei (animation.displacement.x)
+  pei (oam.buffer.flags)
+
+  ;push return adress long to stack
+  pea _return_docheck-1   ;push return adress
+
+  ;push normal target unrolled pointer depending on tilemap length
+  lda oam.current.normal.length
+  and.w #$ff
+  phx
+  tax
+  lda.l extern.sprite_normal_docheck.writeOamLut,x
+  plx
+  pha
+
+  ;push normal target DP
+  txa
+  clc
+  ldy.w #ANIMATION.FRAME.TILEMAP.BIG.LENGTH
+  adc.b [animation.frame.pointer],y
+  pha
+
+  ;push normal ROM pointer
+  pei (oam.current.normal.pointer)  
+
+  ;hioam pointer normal
+  txa   ;byte-sized hioam entries     
+  ldy.w #ANIMATION.FRAME.TILEMAP.BIG.LENGTH
+  clc
+  adc.b [animation.frame.pointer],y  
+  lsr a
+  lsr a
+  clc
+  adc.w #GLOBAL.oamBufferHi
+  pha
+
+  ;push big target
+  lda oam.current.big.length
+  and.w #$ff
+  phx
+  tax
+  lda.l extern.sprite_big_docheck.writeOamLut,x
+  plx
+  pha
+
+  ldy.b oam.current.big.pointer
+
+
+  txa
+  lsr a
+  lsr a
+  clc
+  adc.w #GLOBAL.oamBufferHi
+  tcd
+
+  ;dp: hioam target, absolute
+  ;x: oam target, relative
+  ;y: ROM source, absolute
+  ;db: ROM source bank
+  ;stack: variables
+
+  clc
+  rts
+
+_return_docheck:
+  pla
+  pla
+  pla
+  pla
+  pla
+  plb
+  pld
+  rtl
+
+
+.redef STACK_OAM_DISPLACEMENT_X 5
+.redef STACK_OAM_DISPLACEMENT_Y 7
+.redef STACK_OAM_FLAGS 3
+
+;could it be that carry should never be affected here and clc can be omitted?
+.macro SPRITE_NORMAL_DOCHECK
+  lda.w $0+((SPRITE.TILE.MAX-1-\@)*4),y
+  and.w #$ff
+  clc
+  adc STACK_OAM_DISPLACEMENT_X,s
+  cmp.w #SCREEN.DEFAULT.SIZE.X+1
+  bcc ++
+      ;catch sprites hanging over left edge of screen
+      cmp.w #-SCREEN.MARGIN.X
+      bcc +
+  
+++
+  sta.w (GLOBAL.oamBuffer&$ffff)+((SPRITE.TILE.MAX-1-\@)*4),x
+  and.w #$100
+  xba
+  tsb.b 0+(SPRITE.TILE.MAX-1-\@)
+
+  lda.w $1+((SPRITE.TILE.MAX-1-\@)*4),y
+  and.w #$ff
+  clc
+  adc STACK_OAM_DISPLACEMENT_Y,s
+  cmp.w #SCREEN.DEFAULT.SIZE.Y+1
+  bcc ++
+      ;catch sprites hanging over left edge of screen
+      cmp.w #-SCREEN.MARGIN.Y
+      bcs ++
+       lda.w #225
+
+++
+  sta.w (GLOBAL.oamBuffer&$ffff)+$1+((SPRITE.TILE.MAX-1-\@)*4),x
+
+  lda.w $2+((SPRITE.TILE.MAX-1-\@)*4),y
+  clc
+  adc STACK_OAM_FLAGS,s
+  sta.w (GLOBAL.oamBuffer&$ffff)+$2+((SPRITE.TILE.MAX-1-\@)*4),x
++  
+_normal_docheck.unrolled.\@:
+.endm
+
+.rept SPRITE.TILE.MAX
+  SPRITE_NORMAL_DOCHECK
+.endr
+  rts
+
+.redef STACK_OAM_DISPLACEMENT_X 13
+.redef STACK_OAM_DISPLACEMENT_Y 15
+.redef STACK_OAM_FLAGS 17
+.redef STACK_OAM_MAINTABLE 19
+
+;@todo: push special bigtile flags, write here
+.macro SPRITE_BIG_DOCHECK
+  lda.w $0+((SPRITE.TILE_BIG.MAX-1-\@)*4),y
+  and.w #$ff
+  clc
+  adc STACK_OAM_DISPLACEMENT_X,s
+  cmp.w #SCREEN.DEFAULT.SIZE.X+1
+  bcc ++
+      ;catch sprites hanging over left edge of screen
+      cmp.w #-SCREEN.MARGIN.X*4
+      bcc +
+  
+++
+  sta.w (GLOBAL.oamBuffer&$ffff)+$0+((SPRITE.TILE_BIG.MAX-1-\@)*4),x
+  and.w #$100
+  ora.w #$200
+  xba
+  tsb.b 0+(SPRITE.TILE_BIG.MAX-1-\@)
+
+  lda.w $1+((SPRITE.TILE_BIG.MAX-1-\@)*4),y
+  and.w #$ff
+  clc
+  adc STACK_OAM_DISPLACEMENT_Y,s
+  cmp.w #SCREEN.DEFAULT.SIZE.Y+1
+  bcc ++
+      ;catch sprites hanging over left edge of screen
+      cmp.w #-SCREEN.MARGIN.Y*4
+      bcs ++
+        lda.w #MEMORY_CLEAR.OAM
+
+++
+  sta.w (GLOBAL.oamBuffer&$ffff)+$1+((SPRITE.TILE_BIG.MAX-1-\@)*4),x
+
+  lda.w $2+((SPRITE.TILE_BIG.MAX-1-\@)*4),y
+  and.w #OAM.FORMAT.TILE
+  clc
+  adc STACK_OAM_MAINTABLE,s
+  asl a
+  phx
+  tax  
+  lda.w $2+((SPRITE.TILE_BIG.MAX-1-\@)*4),y
+  and.w #(OAM.FORMAT.HFLIP | OAM.FORMAT.VFLIP)
+  clc
+  adc STACK_OAM_FLAGS+2,s
+  clc
+  adc.l sprite32x32id.lut,x
+  plx
+  sta.w (GLOBAL.oamBuffer&$ffff)+$2+((SPRITE.TILE_BIG.MAX-1-\@)*4),x
++  
+_big_docheck.unrolled.\@:
+.endm
+
+
+.rept SPRITE.TILE_BIG.MAX
+  SPRITE_BIG_DOCHECK
+.endr
+  pld ;hioam pointer for normal
+  ply ;ROM source for normal tiles
+  plx ;oam target for normal tiles
+  rts
+
+.macro SPRITE_NORMAL_DOCHECK_POINTER
+  .dw _normal_docheck.unrolled.\@-1 ;-1 because of rts/rtl
+.endm
+
+.macro SPRITE_BIG_DOCHECK_POINTER
+  .dw _big_docheck.unrolled.\@-1 ;-1 because of rts/rtl
+.endm
+
+extern.sprite_normal_docheck.writeOamLut:
+.rept SPRITE.TILE.MAX
+  SPRITE_NORMAL_DOCHECK_POINTER
+.endr  
+
+extern.sprite_big_docheck.writeOamLut:
+.rept SPRITE.TILE_BIG.MAX
+  SPRITE_BIG_DOCHECK_POINTER
+.endr  
+.ends

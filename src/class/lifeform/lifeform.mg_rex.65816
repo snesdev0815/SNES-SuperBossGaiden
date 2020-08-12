@@ -1,0 +1,642 @@
+/**
+* Final boss, has a couple of phases
+* 
+*/
+
+.include "src/class/lifeform/lifeform.mg_rex.h"
+.section "lifeform.mg_rex"
+
+  METHOD init
+  lda.w #SPRITE.mg_rex.dummy.PTR
+  sta this.animationStuff
+  ldx.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT | LIFEFORM.ABILITIES.JUMP | LIFEFORM.ABILITIES.GRABTHROW)
+  jsl extern.lifeform.initialize
+
+  lda dimension.position.x+1
+  sta this.origin.x
+
+  lda.w #100
+  sta lifeform.speed
+
+  lda.w #MG_REX.HP
+  sta lifeform.hitpoints
+
+  lda.w #1
+  sta lifeform.bouncyness
+
+  lda #60
+  sta dimension.collision.diameter
+
+  lda.w #-72
+  sta lifeform.carry.height
+
+  lda #lifeform.turn.CLB
+  sta lifeform.callback.touch.wall
+
+  ;fall straight, not in direction of player
+  stz lifeform.controller.current.actions
+
+  rts
+
+  CALLBACK mg_rex.jump
+  ;only jump while walking
+  lda dimension.speed.x
+  bne +
+    rts
+
++  
+  sep #$20
+  lda #LIFEFORM.STATE.JUMPING
+  sta lifeform.state
+
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+
+  lda #LIFEFORM.JUMP.AGE
+  sta lifeform.action.age
+  rep #$31
+
+  lda.w #AUDIO.EFFECT.DASH
+  jsr interface.dimension.playSoundEffect
+
+  lda #MG_REX.JUMP.IMPULSE
+  sta dimension.speed.y
+
+  lda #MG_REX.JUMP.ACCEL
+  sta dimension.acceleration.y
+
+  ;overcome ground traction
+  dec dimension.position.y+1
+
+  lda.w #SPRITE.dust.PTR
+  ldx.w #0
+  ldy.w #10
+  jsl extern.lifeform.sprite
+
+  jsl extern.lifeform.turnToTarget
+  SCRIPT_JSR sprite.library.resetFrameFlags
+  rts
+
+
+  METHOD play
+  lda this.cycle
+  asl a
+  tax
+  lda.l _speed.lut,x
+  sta lifeform.speed
+
+  lda this.mode
+  asl a
+  tax
+  jmp (_mode.lut,x)
+
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+_mode.lut:
+  .dw _mode.awaitStash
+  .dw _mode.roar
+  .dw _mode.laser
+  .dw _mode.pause
+  .dw _mode.walking
+  .dw _mode.shooting
+
+_mode.awaitStash:
+  AX16
+  stz lifeform.controller.current.actions
+
+  lda dimension.position.x+1
+  cmp this.origin.x
+  beq +
+    bcs ++
+    inc dimension.position.x+1
+    bra +
+++
+    dec dimension.position.x+1
++
+
+  lda this.animationStuff
+  clc
+  adc.w #LIFEFORM.SPRITE_ANIMATION.LENGTH
+  sta lifeform.animation.base
+
+  jsl extern.lifeform.eval
+
+  lda.w #OBJECT.PROPERTIES.hurts
+  trb iterator.properties
+
+  lda #movement.void.CLB
+  sta lifeform.callback.touch.floor
+
+  ;wait until on ground
+  lda dimension.speed.y
+  ora dimension.speed.x
+  bne +
+
+  ldx.w #lifeform.grabbed.object
+  jsr core.object.exists
+  bcc +
+    lda lifeform.carry.y
+    cmp lifeform.carry.height
+    bne +
+      lda lifeform.condition
+      and.w #$ff
+      cmp.w #LIFEFORM.CONDITION.GROUNDED
+      bne +
+        lda this.animationStuff
+        sta lifeform.animation.base     
+
+        lda.w #MG_REX.MODE.ROAR
+        sta this.mode
+
+        jsl extern.lifeform.turnToTarget
+        SCRIPT_JSR sprite.library.resetFrameFlags
+
+
+        lda #LIFEFORM.SPRITE_ANIMATION.IDLE.DUCK
+        jsl extern.movement.startAnimation
+
+        lda.w #AUDIO.EFFECT.ROAR
+        jsr interface.dimension.playSoundEffect
+
+        NEW level.screen.shake.CLS.PTR VOID 0 0 0 0 14 $7
+
+        lda.w #MG_REX.ROAR.AGE
+        sta this.age
+
++      
+  rts
+
+
+_mode.roar:
+  AX16
+  jsr _setGrabbedPosition
+  jsl extern.lifeform.animate
+  lda this.age
+  beq +
+    dec this.age
+    rts
+
++
+  lda.w #MG_REX.MODE.LASER
+  sta this.mode
+
+  jsl extern.lifeform.turnToTarget
+
+  ldx.w #MATH.045_DEG | ((MATH.135_DEG+20) << 8)
+  lda animation.flags.static
+  bit.w #ANIMATION.FLAGS.X_MIRROR
+  beq +
+    ldx.w #MATH.135_DEG | ((MATH.045_DEG-20) << 8)
+
++
+  txa
+  sta this.shootingAngle
+
+  lda.w #60
+  sta this.age
+
+  lda.w #OBJECT.PROPERTIES.hurts
+  tsb iterator.properties  
+  rts
+
+_mode.laser:
+  AX16
+  ;turn with shooting
+  sep #$20
+  lda this.shootingAngle
+  sec
+  sbc.b #MATH.090_DEG
+  bmi +
+    lda.b #SPRITE.DIRECTION.LEFT
+    sta dimension.direction
+
+    rep #$31
+    lda.w #ANIMATION.FLAGS.X_MIRROR
+    bit.b animation.flags.static
+    bne ++
+      tsb animation.flags.static
+      SCRIPT_JSR sprite.library.resetFrameFlags
+      bra ++
+
++
+  lda.b #SPRITE.DIRECTION.RIGHT
+  sta dimension.direction
+
+  rep #$31
+  lda.w #ANIMATION.FLAGS.X_MIRROR
+  bit.b animation.flags.static
+  beq ++
+    trb animation.flags.static
+    SCRIPT_JSR sprite.library.resetFrameFlags
+
+++
+
+  jsr _setGrabbedPosition
+
+  jsl extern.lifeform.animate
+
+  ;wait a bit before rotating laser
+  lda this.age
+  beq +
+    dec this.age
+    bra ++
+
++  
+  lda animation.timer
+  ror a
+  sep #$20
+  bcc ++
+    lda this.targetAngle
+    cmp.b #(MATH.045_DEG-20)
+    beq +++
+      dec this.shootingAngle
+      bra ++
++++
+      inc this.shootingAngle
+
+++
+
+  lda this.targetAngle
+  cmp this.shootingAngle
+  rep #$31
+  bne +
+    lda.w #MG_REX.MODE.PAUSE
+    sta this.mode
+    lda.w #MG_REX.PAUSE2.AGE
+    sta this.age
+    lda #mg_rex.jump.CLB
+    sta lifeform.callback.touch.floor
+
+    jsl extern.movement.doJump
+    rts
+
++  
+  lda.w FrameCounter
+  and.w #3
+  bne +
+    pei (this.shootingAngle)
+    pea 0
+    pea 0
+    lda dimension.position.y+1
+    clc
+    adc dimension.collision.basepoint.y
+    sec
+    sbc.w #60
+    pha
+
+    lda dimension.position.x+1
+    clc
+    adc dimension.collision.basepoint.x
+    clc
+    adc.w #16
+    pha
+    lda animation.flags.static
+    bit.w #ANIMATION.FLAGS.X_MIRROR
+    beq +++
+      ;left
+      lda 1,s
+      sec
+      sbc.w #32
+      sta 1,s
+
++++ 
+    NEW_TRY lifeform.bossShot.CLS.PTR VOID
+    pla
+    pla
+    pla
+    pla
+    pla
+
++  
+  rts
+
+_setGrabbedPosition:
+  AX16
+  lda lifeform.grabbed.object
+  cmp.w #VOID
+  beq +
+    jsl extern.lifeform.getCarryPosition
+    pei (dimension.direction)
+    phy
+    phx
+    SCRIPT_TRY lifeform.library.setPosition.MTD lifeform.grabbed.object
+    pla
+    pla
+    pla
+
++  
+rts
+
+_mode.pause:
+  AX16
+  jsl extern.lifeform.animate
+  lda this.age
+  bne +
+      lda.w #MG_REX.MODE.WALK
+      sta this.mode
+      stz lifeform.controller.current.actions
+      lda.w #MG_REX.WALK.AGE
+      sta this.age      
+      rts
+
++
+  dec this.age
+  rts
+
+_mode.walking:
+  AX16
+  jsl extern.lifeform.eval
+  
+  ;approach player
+  lda animation.timer
+  and.w #$7
+  bne +
+    jsl extern.lifeform.turnToTarget
+    SCRIPT_JSR sprite.library.resetFrameFlags
+
++
+
+  lda this.age
+  bne +
+      lda.w #MG_REX.MODE.SHOOT
+      sta this.mode
+      stz lifeform.controller.current.actions
+
+      rts
++
+  dec this.age
+  rts
+
+
+_mode.shooting:
+  AX16
+  jsl extern.lifeform.eval
+
+  lda animation.timer
+  and.w #$7f
+  beq +
+    rts
+
++  
+-
+    ;turn to player, but don't actually move
+    jsl extern.lifeform.turnToTarget
+    SCRIPT_JSR sprite.library.resetFrameFlags
+
+    stz lifeform.controller.current.actions
+
+    ldx this.cycle
+    lda.l _cycle.lut,x
+    and.w #$ff
+    clc
+    adc this.generatorIndex
+    clc
+    adc this.generatorIndex
+    tax
+    lda.l _cycles,x
+    bne ++
+      ;list end? return to walking
+      lda.w #MG_REX.MODE.WALK
+      sta this.mode
+
+      lda.w #MG_REX.WALK.AGE
+      sta this.age
+
+      stz this.generatorIndex
+
+      jsl extern.movement.doJump
+      rts
+
+++    
+    tay
+    ldx.w #this.projectile
+
+    pea 0
+    pea BERZERK.FULL/8
+    pea 0
+    pea 0
+    lda dimension.position.y+1
+    clc
+    adc dimension.collision.basepoint.y
+    sec
+    sbc.w #30
+    pha
+
+    lda dimension.position.x+1
+    clc
+    adc dimension.collision.basepoint.x
+    clc
+    adc.w #32
+    pha
+    lda animation.flags.static
+    bit.w #ANIMATION.FLAGS.X_MIRROR
+    beq +++
+      ;left
+      lda 1,s
+      sec
+      sbc.w #64
+      sta 1,s
++++
+    jsr core.object.create.try
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    bcc +
+
+    inc this.generatorIndex
+
+    lda lifeform.target.object
+    sta iterator.target
+    lda lifeform.target.object+2
+    sta iterator.target+2
+
+    jsl extern.lifeform.getTargetDirection
+    bcs ++
+
+    ;no target present? just shoot somewhere...
+    ldx.w #MATH.000_DEG ;right
+    lda animation.flags.static
+    bit.w #ANIMATION.FLAGS.X_MIRROR
+    beq +++
+      ldx.w #MATH.180_DEG ;left
+
++++
+    txa
+
+++
+    pha
+    
+    pea 2
+    pei (iterator.self)
+    pei (iterator.self + 2)
+    CALL lifeform.library.oncommand.MTD this.projectile LIFEFORM.COMMAND.THROW
+    plx
+    plx
+    plx
+    pla
+    
+    ;become invincible for a bit after throw so that throwable doesnt hurt self
+    sep #$20
+    lda.b #LIFEFORM.THROW_INVINCIBLE.AGE
+    sta lifeform.invincibility.invisible.timer
+    rep #$31
+
++
+  rts
+
+_cycle.lut:
+  .db _cycle.0-_cycles
+  .db _cycle.1-_cycles
+  .db _cycle.2-_cycles
+  .db _cycle.3-_cycles
+
+_speed.lut:
+  .dw $100
+  .dw $150
+  .dw $200
+  .dw $250
+
+_cycles:
+_cycle.0:
+  .dw lifeform.static.CLS.PTR, lifeform.bomb.CLS.PTR, 0
+_cycle.1:
+  .dw lifeform.bluecollar.CLS.PTR, lifeform.bluecollar.CLS.PTR, lifeform.bomb.CLS.PTR, 0
+_cycle.2:
+  .dw lifeform.jumpwalker.CLS.PTR, lifeform.jumpwalker.CLS.PTR, lifeform.jumpwalker.CLS.PTR, lifeform.bomb.CLS.PTR, 0
+_cycle.3:
+  .dw lifeform.spiked_mine.CLS.PTR, lifeform.floating_mine.CLS.PTR, lifeform.fireball.CLS.PTR, lifeform.fireball.CLS.PTR, lifeform.bomb.CLS.PTR, 0
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +
+    lda lifeform.invincibility.timer
+    ora lifeform.invincibility.invisible.timer
+    and.w #$ff
+    bne +
+
+    lda this.mode
+    cmp.w #MG_REX.MODE.AWAIT_STASH
+    beq ++++
+    
+    cmp.w #MG_REX.MODE.SHOOT
+    beq +++
+
+    cmp.w #MG_REX.MODE.WALK
+    bne ++
+
+
++++
+    ;accept any bomb attack, including explode.
+      lda OBJECT.CALL.ARG.3,s
+      and.w #$ff
+      cmp.w #lifeform.bomb.CLS.PTR
+      bne ++
+        ;if max cycle reached, allow kill
+        lda this.cycle
+        cmp.w #3
+        bcc +++
+          ;get killed
+          jsl extern.lifeform.onKill
+          jsl extern.movement.bigExplosion
+          sec
+          rts
+
++++
+          ;cycles not done? refresh health and repeat!
+          inc this.cycle
+          lda.w #MG_REX.HP
+          sta lifeform.hitpoints
+          sep #$20
+          lda.b #LIFEFORM.INVINCIBILITY.TIMER
+          sta lifeform.invincibility.timer
+          rep #$31
+          stz this.generatorIndex
+
+          ;return to walking mode after pause.
+          lda.w #MG_REX.MODE.AWAIT_STASH
+          sta this.mode
+
+          jsr _amendThrowPosition
+          
+          jsl extern.lifeform.throw
+          lda.w #VOID
+          sta this.passenger
+          sta this.passenger+2
+
+          jsl extern.movement.bigExplosion
+
+          sec
+          rts
+
+++
+    lda.w #AUDIO.EFFECT.BLOCK
+    jsr interface.dimension.playSoundEffect
+++++    
+    ;no block sound if disabled
+    clc
+    rts
+
+      
+
++
+
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.GRAB_ME
+  bne +
+    ldx.w #this.passenger
+    jsr core.object.exists
+    bcs +
+      lda OBJECT.CALL.ARG.2,s
+      sta this.passenger
+      sta iterator.target
+      lda OBJECT.CALL.ARG.3,s
+      sta this.passenger+2
+      sta iterator.target+2
+
+      jsl extern.lifeform.grabLifeform
+
+      sec
+      rts
+
++
+  clc
+  rts
+
+_amendThrowPosition:
+  AX16
+  ;hack to make sure passenger doesnt go out of bounds
+  SCRIPT_TRY lifeform.library.getPosition.MTD lifeform.grabbed.object
+  phy
+  cpx.w #78*8
+  bcc +
+    ldx.w #78*8
+
++
+  cpx.w #32*8
+  bcs +
+    ldx.w #32*8
+
++
+  phx
+  SCRIPT_TRY lifeform.library.setPosition.MTD lifeform.grabbed.object
+  plx
+  ply
+  rts
+
+
+  METHOD setPosition
+  jmp lifeform.library.setBasepointPosition
+
+  CLASS lifeform.mg_rex oncommand
+.ends	
+	

@@ -1,0 +1,210 @@
+/**
+* Unpacks LZ4-compressed files
+*
+* Self-modifying code, needs to reside in RAM.
+* Adapted from https://www.brutaldeluxe.fr/products/crossdevtools/lz4/index.html
+*
+*/
+
+.include "src/core/unpack.h"
+.section "core.unpack"
+
+core.unpack.init:
+  AX16
+  phd
+  lda.w #ZP
+  tcd
+
+  pea unpackEnd - unpack
+  pea GLOBAL.unpack.code
+  pea :unpack
+  pea unpack
+  jsr core.memory.copyToWRAM
+  pla
+  pla
+  pla
+  pla
+  
+  pld
+  rts
+
+/*
+a: packed file bank
+x: packed file offset
+
+unpacks to $7f:0000
+
+packed fileheader must contain file length.
+
+returns unpacked data offset, bank, length (if data uncompressed, may return original data pointer)
+*/    
+.redef unpack.pointer temp.misc
+.redef unpack.size temp.misc+4
+
+_badFile:
+    TRIGGER_ERROR E_LZ4BadFile
+
+
+;return a,16bit: unpacked length
+/**
+* @param a <int, 8bit> source bank
+* @param x <int, 16bit> source offset
+* @param 1 <int, 16bit> target bank
+* @param 2 <int, 16bit> target offset
+*/
+core.unpack.unpack:
+    AX16
+    stx.b unpack.pointer
+    sta.b unpack.pointer+2
+
+    ldy.w #LZ4.MAGIC_NUMBER
+    lda.b [unpack.pointer],y
+    cmp.w #LZ4.MAGIC.LO
+    bne _badFile
+    iny
+    iny
+    lda.b [unpack.pointer],y
+    cmp.w #LZ4.MAGIC.HI
+    bne _badFile
+    ldy.w #LZ4.FLG
+    lda.b [unpack.pointer],y
+    and.w #(LZ4.FLG.VERSION | LZ4.FLG.CONTENT_SIZE)
+    cmp.w #((%01 << 6) | LZ4.FLG.CONTENT_SIZE)
+    bne _badFile
+
+    ;unpacked file too large
+    ldy.w #LZ4.CONTENT_SIZE+2
+    lda.b [unpack.pointer],y
+    iny
+    iny
+    ora.b [unpack.pointer],y
+    iny
+    iny
+    ora.b [unpack.pointer],y
+    ;packed file too large or uncompressed
+    ldy.w #LZ4.BLOCK_SIZE+2
+    ora.b [unpack.pointer],y
+    bne _badFile
+
+
+    ldy.w #LZ4.CONTENT_SIZE
+    lda.b [unpack.pointer],y
+    sta.b unpack.size
+
+    lda unpack.pointer
+    clc
+    adc.w #LZ4.DATA
+    tax
+
+    ldy.w #LZ4.BLOCK_SIZE
+    clc
+    adc.b [unpack.pointer],y
+    tay
+
+    sep #$20
+    lda unpack.pointer+2
+    xba
+    lda 3,s
+    rep #$31
+    jsl GLOBAL.unpack.code
+    sec
+    sbc 5,s
+    cmp unpack.size
+    beq +
+        TRIGGER_ERROR E_LZ4UnpackError
+
++    
+    rts
+
+
+.ends
+
+;RAM 7ef8bf GLOBAL.unpack.code
+;.orga $ff45
+;.section "unpack.payload" superfree
+;temp.kernel
+;d0d9a1
+unpack:
+  AX16
+
+LZ4_Unpack       STA.w  LZ4_Literal_3+1 -unpack+(GLOBAL.unpack.code&$ffff)  ; Uncompress a LZ4 Packed Data buffer (64 KB max)
+                 SEP  #$20              ; A = Bank Src,Bank Dst
+                 STA.w  LZ4_Match_5+1 -unpack+(GLOBAL.unpack.code&$ffff)    ; X = Header Size = 1st Packed Byte offset
+                 STA.w  LZ4_Match_5+2 -unpack+(GLOBAL.unpack.code&$ffff)    ; Y = Pack Data Size
+                 XBA                    ;  => Return in A the length of unpacked Data
+                 STA.w  LZ4_ReadToken+3 -unpack+(GLOBAL.unpack.code&$ffff)  
+                 STA.w  LZ4_Match_1+3 -unpack+(GLOBAL.unpack.code&$ffff)    
+                 STA.w  LZ4_GetLength_1+3 -unpack+(GLOBAL.unpack.code&$ffff)
+                 REP  #$30 
+                 STY.w  LZ4_Limit+1 -unpack+(GLOBAL.unpack.code&$ffff)
+;--
+                 ;LDY  #$0000            ; Init Target unpacked Data offset
+                 lda 8,s
+                 tay
+LZ4_ReadToken    lda.l $AA0000,X         ; Read Token Byte
+                 INX
+                 STA.w  LZ4_Match_2+1 -unpack+(GLOBAL.unpack.code&$ffff)
+;----------------
+LZ4_Literal      AND  #$00F0            ; >>> Process Literal Bytes <<<
+                 BEQ  LZ4_Limit         ; No Literal
+                 CMP  #$00F0
+                 BNE  LZ4_Literal_1
+                 JSR  LZ4_GetLengthLit -unpack+(GLOBAL.unpack.code&$ffff)  ; Compute Literal Length with next bytes
+                 BRA  LZ4_Literal_2
+LZ4_Literal_1    LSR                    ; Literal Length use the 4 bit
+                 LSR
+                 LSR
+                 LSR
+;--
+LZ4_Literal_2    dec a                    ; Copy A+1 Bytes
+LZ4_Literal_3    MVN  $AA,$BB           ; Copy Literal Bytes from packed data buffer
+                 PHK                    ; X and Y are auto incremented
+                 PLB
+;----------------
+LZ4_Limit        CPX  #$AAAA            ; End Of Packed Data buffer ?
+                 BEQ  LZ4_End
+;----------------
+LZ4_Match        TYA                    ; >>> Process Match Bytes <<<
+                 SEC
+LZ4_Match_1      sbc.l $AA0000,X         ; Match Offset
+                 INX
+                 INX
+                 STA.w  LZ4_Match_4+1 -unpack+(GLOBAL.unpack.code&$ffff)
+;--
+LZ4_Match_2      LDA  #$0000            ; Current Token Value
+                 AND  #$000F
+                 CMP  #$000F
+                 BNE  LZ4_Match_3
+                 JSR  LZ4_GetLengthMat -unpack+(GLOBAL.unpack.code&$ffff)  ; Compute Match Length with next bytes
+LZ4_Match_3      CLC
+                 ADC  #$0003            ; Minimum Match Length is 4 (-1 for the MVN)
+;--
+                 PHX
+LZ4_Match_4      LDX  #$AAAA            ; Match Byte Offset
+LZ4_Match_5      MVN  $BB,$BB           ; Copy Match Bytes from unpacked data buffer
+                 PHK                    ; X and Y are auto incremented
+                 PLB
+                 PLX
+;----------------
+                 BRA  LZ4_ReadToken
+;----------------
+LZ4_GetLengthLit LDA  #$000F            ; Compute Variable Length (Literal or Match)
+LZ4_GetLengthMat STA.w  LZ4_GetLength_2+1 -unpack+(GLOBAL.unpack.code&$ffff)
+LZ4_GetLength_1  lda.l $AA0000,X         ; Read Length Byte
+                 INX
+                 AND  #$00FF
+                 CMP  #$00FF
+                 BNE  LZ4_GetLength_3
+                 CLC
+LZ4_GetLength_2  ADC  #$000F
+                 STA.w  LZ4_GetLength_2+1 -unpack+(GLOBAL.unpack.code&$ffff)
+                 BRA  LZ4_GetLength_1
+LZ4_GetLength_3  ADC.w  LZ4_GetLength_2+1 -unpack+(GLOBAL.unpack.code&$ffff)
+                 RTS
+;----------------
+LZ4_End          TYA                    ; A = Length of Unpack Data
+                 RTL
+
+unpackEnd:
+
+

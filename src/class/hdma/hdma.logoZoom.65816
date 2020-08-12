@@ -1,0 +1,164 @@
+/**
+* Plays HDMA background fade-in animation to PPU scroll regs
+* 
+*/
+
+.include "src/class/hdma/hdma.logoZoom.h"
+.section "hdma.logoZoom"
+
+/**
+* @param 1 <int, 8bit> target layer (0-3)
+*/
+  METHOD init
+
+  lda OBJECT.CALL.ARG.1,s ;BG1HOFS - BG4VOFS
+  cmp.w #BG1HOFS
+  bcs +
+    pha
+    TRIGGER_ERROR E_ValueError
+
++
+  cmp.w #BG4VOFS+1
+  bcc +
+    pha
+    TRIGGER_ERROR E_ValueError
+
++
+  sep #$20
+  sta hdma.target
+
+  rep #$31
+
+  lda OBJECT.CALL.ARG.2,s
+  sta hdma.animation.speed
+
+
+  lda #LOGO_ZOOM.TABLE.LENGTH
+  sta hdma.ramBuffer.length
+  jsr hdma.library.allocateBuffer
+
+
+  lda.w #GLOBAL.wramBuffer.start
+  clc
+  adc hdma.ramBuffer.start
+  tax
+  sep #$20
+  lda #RAM
+  jsr hdma.library.setTableAdress
+
+  lda hdma.flags
+  ora #DMAP_1_REG_WRITE_TWICE
+  sta hdma.flags
+
+  jsr _initTable
+  jsr hdma.library.start
+  rep #$31
+  rts
+
+  METHOD play
+  inc hdma.animation.timer
+  lda hdma.animation.speed
+  and hdma.animation.timer
+  and.w #$ff
+  bne +
+    jsr _updateTable
+
++    
+  rts
+
+  METHOD kill
+  jsr hdma.library.stop
+  jsr hdma.library.deallocateBuffer
+  jmp object.library.kill
+
+_updateTable:
+  php
+  rep #$31
+  pha
+
+  lda this.tablePointer
+  sta 1,s
+  asl a
+  clc
+  adc 1,s
+  clc
+  adc hdma.ramBuffer.start
+  clc
+  adc #GLOBAL.wramBuffer.start
+  tax
+  lda #RAM
+  jsr hdma.library.setTableAdress
+  jsr hdma.library.makePhysical
+
+  inc this.tablePointer
+  lda this.tablePointer
+  cmp #logoZoomInitLUT.end - logoZoomInitLUT
+  bne +
+    stz this.tablePointer
+
++
+  pla
+  plp
+  rts
+
+_initTable:
+  php
+  rep #$31
+  lda.w #$dd
+  sta this.tablePointer
+  lda.w #$30
+  sta this.lutPointer
+  lda #$2a0
+  clc
+  adc hdma.ramBuffer.start
+  sta this.tableEnd
+  ldx hdma.ramBuffer.start
+
+-	lda #2
+	sta.w GLOBAL.wramBuffer.start,x
+	inx
+
+	phx
+	lda this.lutPointer
+	and.w #$3f
+	tax
+	lda.l logoZoomInitLUT,x
+	plx
+
+  sep #$20
+	clc
+  adc #6
+  cmp.b #$80
+  ror a
+  rep #$31
+  and.w #$ff
+ 
+	sta.w GLOBAL.wramBuffer.start,x
+
+	inc this.lutPointer
+	dec this.tablePointer
+	inx
+	inx
+	cpx this.tableEnd
+	bne -
+
+  ;terminate table
+  stz.w GLOBAL.wramBuffer.start,x
+  stz this.tablePointer
+
+  plp
+  rts
+
+  METHOD restart
+  stz this.tablePointer
+  rts  
+  
+  METHOD disable
+  jmp hdma.library.disable
+
+  METHOD enable
+  jmp hdma.library.enable
+    
+  CLASS hdma.logoZoom restart
+
+.ends	

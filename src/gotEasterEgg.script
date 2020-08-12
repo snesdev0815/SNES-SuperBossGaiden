@@ -1,0 +1,205 @@
+/**
+* Cutscene after collecing cone
+*
+*/
+
+  SCRIPT gotEasterEgg
+
+  .redef obj.script.slave hashPtr.1
+  .redef obj.vwf hashPtr.2
+  .redef obj.parser hashPtr.3
+
+  .redef obj.hud this._tmp
+  .redef obj.persistency this._tmp+4
+  .redef song.current this._tmp+8
+
+  .redef this.id script.args
+
+
+  SCRIPT_NEW persistency.slot.CLS.PTR obj.persistency
+
+  lda this.id
+  and.w #$7
+  clc
+  adc.w #FLAG.PERSISTENT.EASTER_EGG
+  xba
+  ora.w #PERSISTENCY.SLOT.BITFLAG
+  pha
+  SCRIPT_CALL persistency.slot.get.MTD obj.persistency
+  sta 1,s
+  pla
+  beq +
+    ;die silently if player already found this
+    CUTSCENE_WAIT_LONG
+    DIE
+
++
+  ;set & save 
+  lda this.id
+  and.w #$ff
+  clc
+  adc.w #FLAG.PERSISTENT.EASTER_EGG
+  xba
+  ora.w #PERSISTENCY.SLOT.BITFLAG
+  pha
+  lda.w #1
+  SCRIPT_CALL persistency.slot.set.MTD obj.persistency
+  pla
+
+  lda.w #SAVE_SLOT.DEFAULT
+  SCRIPT_CALL persistency.slot.save.MTD obj.persistency
+
+  CUTSCENE_ACQUIRE_OBJECT background.hud.CLS.PTR obj.hud
+
+  ;wait until hud disabled
+  SAVE
+  ldx #obj.hud
+  SCRIPT_JSR core.object.exists
+  bcc ++
+  ldx #obj.hud
+  SCRIPT_JSR core.object.isDisabled
+  bcc +
+
+++
+  rts
+
++
+
+  SCRIPT_JSR iterator.library.reset
+-
+  lda.w #OBJECT.PROPERTIES.isLifeform
+  jsl extern.iterator.each.byProperties
+  bcc +
+    ldx #iterator.target
+    SCRIPT_JSR core.object.pause
+    bra -
+        
++
+
+  SCRIPT_JSR iterator.library.reset
+-
+  lda.w #Script.CLS.PTR
+  SCRIPT_JSR iterator.library.each.byId
+  bcc +
+    lda.b iterator.target
+    cmp.b iterator.self
+    beq -
+
+    ldx #iterator.target
+    SCRIPT_JSR core.object.pause
+    bra -
+        
++
+
+  lda.w GLOBAL.audio.song.current
+  sta song.current
+  
+  lda.w #:oncommand.skipEasterEgg.CLB
+  sta this.oncommand+2
+  lda.w #oncommand.skipEasterEgg.CLB
+  sta this.oncommand
+
+  lda.w #(OBJECT.PROPERTIES.isCutscene | OBJECT.PROPERTIES.isLevelMember)
+  SCRIPT_JSR iterator.library.setProperties
+  
+
+  HUD_DISABLE obj.hud
+
+  SCRIPT_JSR core.audio.stopSong
+
+  SAVE
+  ;init textbox
+  SCRIPT_NEW background.textlayer.vwf.CLS.PTR obj.vwf TEXTLAYER.ALLOCATION.SIZE BG.LAYER.2 3 1
+
+  pei (obj.vwf)
+  pei (obj.vwf+2)
+  SCRIPT_NEW vwf.parser.CLS.PTR obj.parser
+  pla
+  pla
+
+  SAVE
+  SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+  bcs +
+      rts
+
++
+  ;draw text
+  lda this.id
+  inc a
+  pha
+  pea VOID
+  pea 32
+  pea 32
+  pea 176
+  pea FONT.big_2bpp.PTR
+  pea text.dialogue.gotEasterEgg
+  SCRIPT_CALL vwf.parser.print.MTD obj.parser
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+
+  ;wait for print complete
+  SAVE
+  SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+  bcs +
+    rts
+
++
+
+  CUTSCENE_WAIT
+
+_exitEasterEgg:  
+  SCRIPT_TRY background.textlayer.vwf.kill.MTD obj.vwf
+  SCRIPT_TRY vwf.parser.kill.MTD obj.parser
+
+  lda song.current
+  SCRIPT_JSR core.audio.playSong
+
+  SCRIPT_TRY Script.kill.MTD obj.script.slave
+
+  SLEEP 3
+    
+  SCRIPT_JSR iterator.library.reset
+-
+  lda.w #Script.CLS.PTR
+  SCRIPT_JSR iterator.library.each.byId
+  bcc +
+    lda.b iterator.target
+    cmp.b iterator.self
+    beq -
+
+    ldx #iterator.target
+    SCRIPT_JSR core.object.resume
+    bra -
+        
++
+
+  SCRIPT_JSR iterator.library.reset
+-
+  lda.w #OBJECT.PROPERTIES.isLifeform
+  jsl extern.iterator.each.byProperties
+  bcc +
+    ldx #iterator.target
+    SCRIPT_JSR core.object.resume
+    bra -
+        
++
+  HUD_ENABLE obj.hud
+
+  SLEEP 3
+
+  DIE
+
+
+  CALLBACK oncommand.skipEasterEgg
+  lda OBJECT.CALL.ARG.1+3,s
+  cmp.w #SCRIPT.COMMAND.EXIT
+  bne +
+    SET_PC _exitEasterEgg
+
++
+    rtl

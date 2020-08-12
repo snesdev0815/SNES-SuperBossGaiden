@@ -1,0 +1,174 @@
+/**
+* controller/joypad input handler
+*
+* reads multiple joypads
+*
+*/
+
+.include "src/core/input.h"
+.section "core.input"
+
+core.input.init:
+  AX16
+  sep #$20
+  lda #1
+  sta.w CheckJoypadMode
+  rep #$31
+  ldx #INPUT.DEVICE.ID.0
+  jsr core.input.reset
+  ldx #INPUT.DEVICE.ID.1
+  jsr core.input.reset
+  ldx #INPUT.DEVICE.ID.2
+  jmp core.input.reset
+
+
+/**
+* @param a<int,16bit> button mask
+* @param x<int,8bit> input device id
+*/
+core.input.setMask:
+  AX16
+  jsr _getInputDevicePointer
+  sta.w inputDevice.mask,x
+  rts
+
+
+
+
+/**
+* @param x<int,8bit> input device id
+*/
+core.input.get.trigger:
+  AX16
+  jsr _getInputDevicePointer
+  lda.w inputDevice.trigger,x
+  and.w inputDevice.mask,x
+  rts
+
+core.input.get.pressTrigger:
+  AX16
+  jsr _getInputDevicePointer
+  lda.w inputDevice.press,x
+  and.w inputDevice.mask,x
+  tay
+  lda.w inputDevice.trigger,x
+  and.w inputDevice.mask,x  
+  rts
+
+
+
+/**
+* this is a bit of a hack. used so that actions triggered dont trigger subsequent checkloops running on the same frame
+*
+* @param a<int,16bit>   mask of input bits to clear
+* @param x<int,8bit> input device id
+*/
+core.input.clear.trigger:
+  AX16
+  jsr _getInputDevicePointer
+  eor.w #$ffff
+  and.w inputDevice.trigger,x
+  sta.w inputDevice.trigger,x
+  rts
+
+
+
+/**
+* @param x<int,8bit> input device id
+* @return x<int,16bit> input device pointer
+*/
+_getInputDevicePointer:
+  AX16
+  pha
+  txa
+  and.w #$ff
+.if DEBUG == 1  
+  cmp #INPUT.DEVICE.ID.MAX
+  bcc +
+	pha
+	TRIGGER_ERROR E_BadInputDevice
+
++
+.endif
+  asl a
+  asl a
+  asl a
+  tax
+  pla
+  rts
+
+
+
+/**
+* @param x<int,8bit> input device id
+*/
+core.input.resetMask:
+  AX16
+  lda #$ffff
+  jmp core.input.setMask
+
+
+;fast multiplayer checker. check this late in nmi so we don't have to wait for auto joypad read to finish:
+CheckJoypadThreePlayers:
+  A8
+-
+    lda.w HVBJOY
+    bit.b #HVBJOY_AUTO_JOY_STATUS
+    bne -
+
+  ;always read port 2/3 data, never 4/5
+  lda.b #WRIO_JOY2_IOBIT_LATCH
+  sta.w WRIO
+  rep #$30
+
+  ldx.w #INPUT.DEVICE.ID.0
+  lda.w JOY1L
+  jsr _checkInputDevice
+
+  ldx.w #INPUT.DEVICE.ID.1
+  lda.w JOY2L
+  jsr _checkInputDevice
+
+  ldx.w #INPUT.DEVICE.ID.2
+  lda.l JOY4L
+  jmp _checkInputDevice
+
+
+/**
+* @param x<int,8bit> input device id
+*/
+core.input.reset:
+  AX16
+  jsr core.input.resetMask
+  stz.w inputDevice.trigger,x
+  stz.w inputDevice.old,x
+  stz.w inputDevice.press,x
+  rts
+
+_checkInputDevice:
+  AX16
+  ;only proceed if this looks like a valid joypad
+  bit.w #JOY_BUTTON_SIGNATURE
+  bne core.input.reset
+
+  ora.w #JOY_BUTTON_SIGNATURE
+  pha
+
+  txa
+  and.w #$ff
+  asl a
+  asl a
+  asl a
+  tax
+
+  lda.w inputDevice.press,x	;get last button state
+  sta.w inputDevice.old,x
+  eor.w #$ffff			;xor
+  sta.w inputDevice.trigger,x
+  pla
+  sta.w inputDevice.press,x
+  and.w inputDevice.trigger,x	;and and only get buttons that werent pressed last frame
+  sta.w inputDevice.trigger,x	;store in joypad buffer
+  rts
+
+.ends

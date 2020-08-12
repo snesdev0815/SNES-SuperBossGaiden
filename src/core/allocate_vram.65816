@@ -1,0 +1,701 @@
+/**
+* vram allocation manager
+*
+* statically assigning vram space hinders flexibility, code reusability and space usage.
+* that's why this handler dynamically allocates and manages available vram space.
+* 
+* feature outline:
+*   -vram is divided into equal allocation blocks ($100 x $100 bytes)
+*   -routines may request allocated memory by specifying desired start, length, stepsize. if no block with desired criteria can be found, this is reported back.
+*   -allocator seeks free blocks, if successful allocates them with allocation id, clears newly-allocated vram to 0 and returns id to calling routine for later reference
+*   -deallocation: routines supply allocation id, allocator frees all allocated blocks with said id.
+*   -id is one byte, sequential. hopefully we can get away with just incrementing id on every call
+*   -all supplied adresses lengths are real adresses, not /2 for vram or anything like that
+*   -block format: $100 * $100 blocks. 0 marks empty block
+* 
+* routines:
+* -init:
+*   -clear allocation blocks
+*   -clear id
+* 
+* -allocateVram:(param a: stepsize(word, $40-$4000), x: length(word). returns: a: id, x:start
+*   -start at 0, check if free
+* 	-if free mark temp.start, check next block until temp.length is satisfied(decrease temp.length by blocksize each step)
+* 	-if not, advance by stepsize, reset temp.start, temp.length, try again.
+* 	-if adress wraps around, return false
+*   -if free space was found, fetch id, mark all blocks from temp.start through temp.length as blocked, then return real adress/length & id to caller
+*   -dont clear vram implicitly, caller has to do that himself(or just use don't care about previous data)
+* 
+* 
+* -deallocateVram:(param a: id)
+*   -walk all blocks, clear block to 0 where id = input id.
+*   -if no block was found, something went wrong(issue exception)
+*   
+*
+*/
+
+
+.include "src/core/allocate_vram.h"
+.section "allocate_vram"
+
+core.vram.init:
+  AX16
+  lda.w #0
+  ldy.w #VRAM_ALLOCATE.GLOBAL.END - VRAM_ALLOCATE.GLOBAL.START
+  ldx.w #VRAM_ALLOCATE.GLOBAL.START
+  jsr ClearWRAM
+  stz.w GLOBAL.currentVramAllocationId
+  rts
+
+/**
+* deallocate vram blocks.
+*
+* @param a<int,8bit>  allocation id of blocks to be deallocated
+* @return c<bool>   set if deallocation was successful
+*/
+core.vram.deallocate:
+  A8
+  phx
+  cmp.w GLOBAL.currentVramAllocationId
+  bne +
+  ;only chance to decrease allocation id is when topmost id gets deallocated
+  dec.w GLOBAL.currentVramAllocationId
+
++ pea 0
+
+  ldx.w #VRAM_ALLOCATION_BLOCKS
+- cmp.w GLOBAL.vramAllocationBlocks,x
+  bne +
+    sta 1,s
+    stz.w GLOBAL.vramAllocationBlocks,x
++ dex
+  bpl -
+
+  plx
+  bne +
+    ;hits if someone tries to deallocate id 0(already empty block) or if there were no blocks that could be deallocated for given id
+    plx
+    clc
+    rts
+    
++ plx
+  sec
+  rts
+
+.if DEBUG == 1
+allocateVramBadStepsize:
+  pha
+  TRIGGER_ERROR E_VallocBadStepsize
+.endif
+
+/**
+* attempt allocating desired vram space
+*
+* @param a <int,16bit>	stepsize ($40 - $4000). a lot of things such as tiles, tilemaps and such must be boundary-aligned, that's why this is needed
+* @param x <int,16bit>	desired size of allocated block in bytes.
+* @param y <int,16bit>	start adress of desired block. required for sprites etc.
+*
+* @return a <int,8bit>	allocation block id
+* @return x <int,16bit>	vram start adress
+* @return c <bool>	true if allocation succeeded
+*/
+core.vram.allocate:
+  AX16
+.if DEBUG == 1  
+  cmp.w #VRAM_ALLOCATION_STEP.MIN
+  bcc allocateVramBadStepsize
+
+  cmp.w #VRAM_ALLOCATION_STEP.MAX + 1
+  bcs allocateVramBadStepsize
+.endif
+  cpx.w #0
+  bne +
+      lda.w #0
+      sec
+      rts    
+
+
++ 
+  sta.w GLOBAL.vramAllocation.input.stepsize
+
+  stx.w GLOBAL.vramAllocation.input.length
+  stx.w GLOBAL.vramAllocation.temp.length
+
+  jsr allocateVramSeekFreeBlocks
+  bcs +
+  	;allocation failed, not enough vram space left
+  	clc
+  	rts
+
++ 
+  jsl extern.allocate_vram.getID
+
+  ldy.w GLOBAL.vramAllocation.temp.start      
+  lda.w GLOBAL.currentVramAllocationId
+  ldx.w GLOBAL.vramAllocation.input.length
+  jsr markAllocatedVramBlocks
+
+  ldx.w GLOBAL.vramAllocation.temp.start
+
+_alloc.vram.normal:
+  sec
+  rts
+
+
+/**
+* attempt allocating desired vram space for 8x8 tiles and 32x32 tiles alltogether.
+* allocates 32x32 interlaced blocks from start of sprite tile vram, 8x8 blocks from end of sprite tile vram
+*
+* @param a <int,16bit>  stepsize ($80 - $4000). a lot of things such as tiles, tilemaps and such must be boundary-aligned, that's why this is needed
+* @param x <int,16bit>  desired size of allocated block in bytes, 8x8 tiles.
+* @param y <int,16bit>  desired size of allocated block in bytes, 16x16 tiles.
+*
+* @return a <int,8bit>  allocation block id
+* @return x <int,16bit> vram start adress 8x8 tiles
+* @return y <int,16bit> vram start adress 32x32 tiles
+* @return c <bool>  true if allocation succeeded
+*/
+core.vram.allocate.tile.sprite:
+  AX16
+.if DEBUG == 1  
+  cmp.w #VRAM_ALLOCATION_STEP.MIN
+  bcc allocateVramBadStepsize
+
+  cmp.w #VRAM_ALLOCATION_STEP.MAX + 1
+  bcs allocateVramBadStepsize
+.endif
+  sta.w GLOBAL.vramAllocation.input.stepsize
+  stx.w GLOBAL.vramAllocation.input.length
+  sty.w GLOBAL.vramAllocation.inputBig.length
+
+  tya
+  clc
+  adc.w GLOBAL.vramAllocation.input.length
+  bne +
+      ;really a good idea?
+      lda.w #0
+      sec
+      rts
++
+  ;save for rollback
+  lda.w GLOBAL.currentVramAllocationId
+  pha
+  jsl extern.allocate_vram.getID
+
+  ;32x32 first because they are allocated from beginning of vram onwards
+  lda.w GLOBAL.vramAllocation.inputBig.length
+  beq ++
+
+    ldy.w GLOBAL.oam.vram.start
+    jsr allocateVramSeekFreeBlocks.32x32
+    bcs +
+      ;allocation failed, not enough vram space left
+      ;rollback
+      pla
+      sta.w GLOBAL.currentVramAllocationId
+      clc
+      rts
+
++
+    lda.w GLOBAL.vramAllocation.temp.start
+    sta.w GLOBAL.vramAllocation.result.big.start
+
+    ldy.w GLOBAL.vramAllocation.result.big.start
+    lda.w GLOBAL.currentVramAllocationId
+    ldx.w GLOBAL.vramAllocation.inputBig.length
+    jsr markAllocatedVramBlocks.32x32
+
+++
+
+  lda.w GLOBAL.vramAllocation.input.length
+  beq ++
+    sta.w GLOBAL.vramAllocation.temp.length
+    ;put nametable base in y
+    ldy.w GLOBAL.oam.vram.start    
+    jsr allocateVramSeekFreeBlocks.backwards
+    bcs +
+asdfdasgfasdgfsa:    
+      ;allocation failed, not enough vram space left
+      ;rollback
+      sep #$20
+      lda.w GLOBAL.currentVramAllocationId
+      jsr core.vram.deallocate
+      rep #$31
+      pla
+      sta.w GLOBAL.currentVramAllocationId
+      clc
+      rts
+
++
+    lda.w GLOBAL.vramAllocation.temp.start
+    sta.w GLOBAL.vramAllocation.result.normal.start
+
+    ldy.w GLOBAL.vramAllocation.result.normal.start
+    lda.w GLOBAL.currentVramAllocationId
+    ldx.w GLOBAL.vramAllocation.input.length
+    jsr markAllocatedVramBlocks
+
+++
+
+
+  pla
+  lda.w GLOBAL.currentVramAllocationId
+  ldx.w GLOBAL.vramAllocation.result.normal.start
+  ldy.w GLOBAL.vramAllocation.result.big.start
+_alloc.vram.sprite:
+  sec
+  rts
+
+
+/**
+* go through vram blocks and return block start adress if successful
+*
+* @return carry<bool>	true if free block area found
+* @return y<int,16bit>	block start id
+*
+*/
+allocateVramSeekFreeBlocks:
+  AX16
+  tya
+  sta.w GLOBAL.vramAllocation.temp.start
+
+  lsr a     ;allocation blocksize: $80
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+
+  tay
+
+allocateVramSeekLoop:
+  lda.w GLOBAL.vramAllocationBlocks,y
+  and.w #$ff
+  beq allocateVramBlockFree
+
+	;block is occupied, reset length counter
+	lda.w GLOBAL.vramAllocation.input.length
+	sta.w GLOBAL.vramAllocation.temp.length
+
+	;advance to next block according to stepsize
+	lda.w GLOBAL.vramAllocation.temp.start
+	clc
+	adc.w GLOBAL.vramAllocation.input.stepsize
+	bcc +
+	  ;allocation failed, end of vram reached
+	  clc
+	  rts
+
++
+	sta.w GLOBAL.vramAllocation.temp.start
+
+    lsr a     ;allocation blocksize: $80
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+
+	cmp.w #VRAM_ALLOCATION_BLOCKS
+	bcc +
+	  ;allocation failed, end of vram reached
+	  clc
+	  rts
+
++	tay
+	bra allocateVramSeekLoop
+
+allocateVramBlockFree:
+  iny
+  cpy.w #VRAM_ALLOCATION_BLOCKS + 1
+  bne +
+	;allocation failed, end of vram reached
+	clc
+	rts
+
++ lda.w GLOBAL.vramAllocation.temp.length
+  sec
+  sbc.w #VRAM_ALLOCATION_BLOCKSIZE
+  sta.w GLOBAL.vramAllocation.temp.length
+  beq +
+  bcs allocateVramSeekLoop
+
++ 
+  ;allocation successful
+  sec
+  rts
+
+
+allocateVramSeekFreeBlocks.backwards:
+  AX16
+  tya
+  lsr a     ;allocation blocksize: $80
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+
+  pha   ;end block
+  ldy #VRAM_ALLOCATION_BLOCKS-1 ;start block
+
+  lda #((VRAM_ALLOCATION_BLOCKS-1) * VRAM_ALLOCATION_BLOCKSIZE)&$ffff
+  sta.w GLOBAL.vramAllocation.temp.start
+
+
+- lda.w GLOBAL.vramAllocationBlocks,y
+  and.w #$ff
+  beq ++
+
+    ;block is occupied, reset length counter
+    lda.w GLOBAL.vramAllocation.input.length
+    sta.w GLOBAL.vramAllocation.temp.length
+
+    ;advance to next block according to stepsize
+    lda.w GLOBAL.vramAllocation.temp.start
+    sec
+    sbc.w GLOBAL.vramAllocation.input.stepsize
+    bcs +
+      ;allocation failed, beginning of vram reached
+      clc
+      rts
+
++
+    sta.w GLOBAL.vramAllocation.temp.start
+
+    lsr a     ;allocation blocksize: $80
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+
+    cmp 1,s
+    bcs +
+      ;allocation failed, beginning of vram start target reached
+      pla
+      clc
+      rts
+
++   tay
+    bra -
+
+++:
+  dey
+  tya
+  cmp 1,s   ;todo/bug: shouldn't this be (1,s)+1?
+  bne +
+    ;allocation failed, end of vram reached
+    pla
+    clc
+    rts
+
++ 
+  lda.w GLOBAL.vramAllocation.temp.length
+  sec
+  sbc.w #VRAM_ALLOCATION_BLOCKSIZE
+  sta.w GLOBAL.vramAllocation.temp.length
+  beq +
+  bcs -
+
+;allocation successful
++ 
+  ;substract length to be able to positively mark allocated blocks
+  lda.w GLOBAL.vramAllocation.temp.start
+  clc
+  adc.w #VRAM_ALLOCATION_BLOCKSIZE
+  sec
+  sbc.w GLOBAL.vramAllocation.input.length
+  sta.w GLOBAL.vramAllocation.temp.start
+  pla
+  sec
+  rts
+
+
+/**
+* seek 32x32 interlaced blocks
+* go through vram blocks and return block start adress if successful
+* This only works correctly if blocksize = $80 bytes!! (one interlaced 32x32 tileline)
+*
+* @return carry<bool>   true if free block area found
+* @return y<int,16bit>  block start id
+*
+*/
+allocateVramSeekFreeBlocks.32x32:
+  AX16
+  tya
+  sta.w GLOBAL.vramAllocation.temp.start
+
+  lsr a     ;allocation blocksize: $80
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+
+  tay
+
+  lda.w GLOBAL.vramAllocation.inputBig.length
+  sta.w GLOBAL.vramAllocation.temp.length
+
+
+- lda.w GLOBAL.vramAllocationBlocks,y
+  ora.w (GLOBAL.vramAllocationBlocks&$ffff)+((SPRITE.TILE.INTERLACE.LENGTH*1)/VRAM_ALLOCATION_BLOCKSIZE),y
+  ora.w (GLOBAL.vramAllocationBlocks&$ffff)+((SPRITE.TILE.INTERLACE.LENGTH*2)/VRAM_ALLOCATION_BLOCKSIZE),y
+  ora.w (GLOBAL.vramAllocationBlocks&$ffff)+((SPRITE.TILE.INTERLACE.LENGTH*3)/VRAM_ALLOCATION_BLOCKSIZE),y
+  and.w #$ff
+  bne +++
+
+  ;check if nametable boundary crossed
+  ;$180: start of first nametable
+  ;$1c0: start of second nametable
+  ;1000100010001000
+  ;$1ff: last block
+  tya
+  ;mask off anything not in current name table
+  and.w #$3f
+  ;if we're beyond this, our sprite must be crossing nametable boundary
+  cmp.w #$34
+  
+
+  bcc ++
+  nop
++++
+    ;block is occupied, reset length counter
+    lda.w GLOBAL.vramAllocation.inputBig.length
+    sta.w GLOBAL.vramAllocation.temp.length
+
+    ;advance to next block according to stepsize
+    lda.w GLOBAL.vramAllocation.temp.start
+    clc
+    adc.w GLOBAL.vramAllocation.input.stepsize
+    bcc +
+      ;allocation failed, end of vram reached
+      clc
+      rts
+
++
+    sta.w GLOBAL.vramAllocation.temp.start
+
+    lsr a     ;allocation blocksize: $80
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    lsr a
+    cmp.w #VRAM_ALLOCATION_BLOCKS - ((SPRITE.TILE.INTERLACE.LENGTH*4)/VRAM_ALLOCATION_BLOCKSIZE)
+    bcc +
+      ;allocation failed, end of vram reached
+      clc
+      rts
+
++   tay
+    bra -
+
+++:
+  ;block is free
+  iny
+  tya
+  and.w #(SPRITE.TILE.INTERLACE.LENGTH / VRAM_ALLOCATION_BLOCKSIZE)-1
+  bne +
+    ;wrap to next sprite block
+    tya
+    clc
+    adc.w #((SPRITE.TILE.INTERLACE.LENGTH * 3)/VRAM_ALLOCATION_BLOCKSIZE)
+    tay
++
+
+  cpy.w #VRAM_ALLOCATION_BLOCKS + 1
+  bne +
+    ;allocation failed, end of vram reached
+    clc
+    rts
+
++ lda.w GLOBAL.vramAllocation.temp.length
+  sec
+  sbc.w #(VRAM_ALLOCATION_BLOCKSIZE*4)
+  sta.w GLOBAL.vramAllocation.temp.length
+  beq +
+  bcs -
+
++ 
+  ;allocation successful
+  sec
+  rts
+
+
+/**
+* mark allocated vram blocks with allocation id
+*
+* @param a<int,8bit>	allocation id
+* @param y<int,16bit>	start adress
+* @param x<int,16bit>   block length
+*/
+markAllocatedVramBlocks:
+  AX16
+  pha
+
+  tya
+
+  lsr a     ;allocation blocksize: $80
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+
+  tay
+
+  ;$80 byte blocks
+  txa
+  ;half-occupied blocks present? will occupy full block
+  bit.w #VRAM_ALLOCATION_BLOCKSIZE - 1
+  beq +
+	clc
+	adc.w #VRAM_ALLOCATION_BLOCKSIZE
+
++
+  lsr a     ;allocation blocksize: $80
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+
+  tax
+  pla
+  sep #$20
+-	
+.if DEBUG == 1
+    pha
+    lda.w GLOBAL.vramAllocationBlocks,y
+    beq +
+      TRIGGER_ERROR E_Todo
+
++
+    pla
+.endif    
+    sta.w GLOBAL.vramAllocationBlocks,y
+	iny
+	dex
+	bne -
+
+  rep #$31
+  rts
+
+
+/**
+* mark allocated vram blocks with allocation id
+*
+* @param a<int,8bit>    allocation id
+* @param y<int,16bit>   start block id
+* @param x<int,16bit>   block length
+*/
+markAllocatedVramBlocks.32x32:
+  AX16
+  pha
+
+  tya
+
+  lsr a     ;allocation blocksize: $80
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+
+  tay
+
+  ;$80 byte blocks
+  txa
+  ;half-occupied blocks present? will occupy full block
+  bit.w #VRAM_ALLOCATION_BLOCKSIZE - 1
+  beq +
+    clc
+    adc.w #VRAM_ALLOCATION_BLOCKSIZE
+
++
+  lsr a     ;allocation blocksize: $80
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+
+  lsr a     ;extra divide by four, interlace strips
+  lsr a
+
+  tax
+  pla
+  sep #$20
+-
+    sta.w GLOBAL.vramAllocationBlocks,y
+    sta.w (GLOBAL.vramAllocationBlocks&$ffff)+((SPRITE.TILE.INTERLACE.LENGTH*1)/VRAM_ALLOCATION_BLOCKSIZE),y
+    sta.w (GLOBAL.vramAllocationBlocks&$ffff)+((SPRITE.TILE.INTERLACE.LENGTH*2)/VRAM_ALLOCATION_BLOCKSIZE),y
+    sta.w (GLOBAL.vramAllocationBlocks&$ffff)+((SPRITE.TILE.INTERLACE.LENGTH*3)/VRAM_ALLOCATION_BLOCKSIZE),y
+    iny
+    rep #$31
+
+    pha
+    tya
+    and.w #(SPRITE.TILE.INTERLACE.LENGTH / VRAM_ALLOCATION_BLOCKSIZE)-1
+    bne +
+      ;wrap to next sprite block
+      tya
+      clc
+      adc.w #((SPRITE.TILE.INTERLACE.LENGTH * 3)/VRAM_ALLOCATION_BLOCKSIZE)
+      tay
+
++
+    pla
+    sep #$20
+    dex
+    bne -
+
+  rep #$31
+  rts
+
+.ends
+
+.base BSL
+.bank BANK.DATA
+.section "extern.allocate_vram" superfree
+
+
+.macro IS_ID_USED
+  .accu 8
+  cmp.w (GLOBAL.vramAllocationBlocks&$ffff)+\@
+  bne +
+    jmp extern.allocate_vram.usedID
++
+.endm
+
+extern.allocate_vram.getID:
+  AX16
+  sep #$20
+  lda.w GLOBAL.currentVramAllocationId
+extern.allocate_vram.usedID:
+  inc a
+  bne +
+    ;allocation id must be non-zero
+    inc a
+    
++
+  .rept VRAM_ALLOCATION_BLOCKS
+    IS_ID_USED
+  .endr
+  sta.w GLOBAL.currentVramAllocationId
+  rep #$31
+  rtl
+
+.ends

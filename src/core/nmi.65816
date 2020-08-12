@@ -1,0 +1,311 @@
+/**
+* NMI (non-maskable interrupt) handler
+*
+*/
+
+.include "src/core/nmi.h"
+.section "nmi"
+
+.macro WRITE_DMA_BUFFER
+  lda.b GLOBAL.DMA_BUFFER.\1.DMAP-NmiGlobalVarsStrt
+  bit.w #$ff
+  beq +
+    sta.w DMAP\2
+    lda.w #$100 ;do it this way to avoid having to switch to 8bit mode. must do this BEFORE writing to HDMATBL
+    sta.w HDMACNT\2-1 ;hdma mid-frame init
+    lda.b GLOBAL.DMA_BUFFER.\1.DMASRCL-NmiGlobalVarsStrt
+    sta.w DMASRC\2L
+    sta.w HDMATBL\2L  ;hdma mid-frame init
+    lda.b GLOBAL.DMA_BUFFER.\1.DMASRCB-NmiGlobalVarsStrt
+    sta.w DMASRC\2B
+    lda.b GLOBAL.DMA_BUFFER.\1.DMALENH-NmiGlobalVarsStrt
+    sta.w DMALEN\2H
++
+.endm
+
+core.nmi.play:
+	rep #$39
+	pha
+	phb
+	phd
+	phx
+	phy
+	lda.w #NmiGlobalVarsStrt
+	tcd
+
+	sep #$20
+	lda #REGS
+	pha
+	plb
+    lda.b GLOBALS.nmi.frame.busy-NmiGlobalVarsStrt    ;skip nmi processing if frame rendering isn't complete yet
+    ora.b GLOBALS.nmi.busy-NmiGlobalVarsStrt
+    beq +
+      lda #2
+      sta.b GLOBALS.nmi.frameOver-NmiGlobalVarsStrt
+        lda.w GLOBAL.HDMA.CHANNEL.ENABLE.CURRENT        ;check which hdma channels need to be activated
+        sta.w HDMAEN        ;set hdma channels and disable dma channel
+
+++
+
+      jmp _skipNmi
+
++
+
+      stz.w HDMAEN        ;set hdma channels and disable dma channel
+      stz.b GLOBAL.HDMA.CHANNEL.ENABLE.CURRENT-NmiGlobalVarsStrt ;buffer for midframe disables
+
+      lda.b #INIDSP_FORCE_BLANK
+      sta.w INIDSP
+
+      rep #$31
+      jsr core.dma.processQueue
+      
+      WRITE_DMA_BUFFER 3 2
+      WRITE_DMA_BUFFER 4 3
+      WRITE_DMA_BUFFER 5 4
+      WRITE_DMA_BUFFER 6 5
+      WRITE_DMA_BUFFER 7 6
+      WRITE_DMA_BUFFER 8 7      
+      sep #$20
+
+      ;clear oam buffer. do this with dma for maximum speed.
+      ;must do this after screen enable, but before hdma enable (would crash 1/1/1 snes otherwise)
+      lda.w GLOBAL.oamUploadFlag
+      beq ++
+        rep #$31
+        stz.w GLOBAL.currentOamSlot
+        lda.w #ClearWramBytePatterns+2*WRAM.CLEAR_PATTERN.OAM
+        sta.w DMASRC0L  ;dma source
+        lda.w #ClearWramBytePatterns+2*WRAM.CLEAR_PATTERN.ZERO
+        sta.w DMASRC1L  ;dma source
+
+        lda.w #GLOBAL.oamBuffer
+        sta.w WMADDL  ;store target wram adress in bank $7e
+
+        lda.w #GLOBAL.oamBuffer.end - GLOBAL.oamBuffer
+        sta.w DMALEN0L         ;Set transfer size
+        lda.w #GLOBAL.oamBufferHi.end - GLOBAL.oamBufferHi
+        sta.w DMALEN1L         ;Set transfer size
+
+        sep #$20
+
+        lda.b #:ClearWramBytePatterns
+        sta.w DMASRC0B         ;Set source bank to $00
+        sta.w DMASRC1B         ;Set source bank to $00
+
+        stz.w WMADDH  ;bank $7e
+
+        ldx #$800a
+        stx DMAP0         ;Set DMA mode to fixed source, WORD to $2180
+        stx DMAP1         ;Set DMA mode to fixed source, WORD to $2180
+
+        lda.b #(DMA_CHANNEL0_ENABLE | DMA_CHANNEL1_ENABLE)
+        sta.w MDMAEN         ;Initiate transfer
+
+++
+      lda.b ScreenBrightness-NmiGlobalVarsStrt
+      sta.w INIDSP
+
+      lda.b GLOBAL.HDMA.CHANNEL.ENABLE-NmiGlobalVarsStrt        ;check which hdma channels need to be activated
+      sta.w HDMAEN        ;set hdma channels and disable dma channel
+      sta.b GLOBAL.HDMA.CHANNEL.ENABLE.CURRENT-NmiGlobalVarsStrt ;buffer for midframe disables
+
+      ;prevent nested NMIs...
+      lda.b #TRUE
+      sta.b GLOBALS.nmi.busy-NmiGlobalVarsStrt
+
+      rep #$31
+      inc.b FrameCounter-NmiGlobalVarsStrt
+      lda.b window12Sel-NmiGlobalVarsStrt
+      sta.w W12SEL
+      lda.b window34Sel-NmiGlobalVarsStrt
+      sta.w W1L
+      lda.b window2Left-NmiGlobalVarsStrt
+      sta.w W2L
+
+
+      lda.b windowBGLogic-NmiGlobalVarsStrt
+      sta.w WBGLOG
+      lda.b MainScreen-NmiGlobalVarsStrt    ;setup main and subscreen
+      sta.w TMAIN
+      lda.b windowMainscreen-NmiGlobalVarsStrt
+      sta.w TMW
+      lda.b colorAdditionSelect-NmiGlobalVarsStrt   ;colour add/sub config
+      sta.w CGWSEL
+
+      lda.b ScreenMode-NmiGlobalVarsStrt    ;set screenmode and bg sizes
+      sta.w BGMODE
+      lda.b BG1TilemapVram-NmiGlobalVarsStrt  ;set offset of bg1 tilemap in  vram
+      sta.w BG1SC
+      lda.b BG3TilemapVram-NmiGlobalVarsStrt  ;set offset of bg3 tilemap in  vram
+      sta.w BG3SC
+      lda.b BGTilesVram12-NmiGlobalVarsStrt   ;set offsets in vram for tiles
+      sta.w BG12NBA     ;of bg1 and bg2
+
+      sep #$20
+      lda.b windowObjSel-NmiGlobalVarsStrt
+      sta.w WOBJSEL
+
+      lda.b FixedColourB-NmiGlobalVarsStrt
+      and #COLDATA_INTENSITY
+      ora #COLDATA_BLUE
+      sta.w COLDATA
+      lda.b FixedColourG-NmiGlobalVarsStrt
+      and #COLDATA_INTENSITY
+      ora #COLDATA_GREEN
+      sta.w COLDATA
+      lda.b FixedColourR-NmiGlobalVarsStrt
+      and #COLDATA_INTENSITY
+      ora #COLDATA_RED
+      sta.w COLDATA
+
+      lda.b xScrollBG1-NmiGlobalVarsStrt    ;set bg1 h-offset
+      sta.w BG1HOFS
+      lda.b xScrollBG1+1-NmiGlobalVarsStrt
+      sta.w BG1HOFS
+      lda.b yScrollBG1-NmiGlobalVarsStrt    ;set bg1 v-offset
+      sta.w BG1VOFS
+      lda.b yScrollBG1+1-NmiGlobalVarsStrt
+      sta.w BG1VOFS
+      lda.b xScrollBG2-NmiGlobalVarsStrt    ;set bg2 h-offset
+      sta.w BG2HOFS
+      lda.b xScrollBG2+1-NmiGlobalVarsStrt
+      sta.w BG2HOFS
+      lda.b yScrollBG2-NmiGlobalVarsStrt    ;set bg2 v-offset
+      sta.w BG2VOFS
+      lda.b yScrollBG2+1-NmiGlobalVarsStrt
+      sta.w BG2VOFS
+      lda.b xScrollBG3-NmiGlobalVarsStrt        ;set bg3 h-offset
+      sta.w BG3HOFS
+      lda.b xScrollBG3+1-NmiGlobalVarsStrt
+      sta.w BG3HOFS
+      lda.b yScrollBG3-NmiGlobalVarsStrt        ;set bg3 v-offset
+      sta.w BG3VOFS
+      lda.b yScrollBG3+1-NmiGlobalVarsStrt
+      sta.w BG3VOFS
+
+      lda.b ObjSel-NmiGlobalVarsStrt
+      sta.w OBJSEL
+
+
+      jsr CheckJoypadThreePlayers
+      sep #$20
+
+      ;update irq flags
+      lda.b GLOBAL.interruptFlags-NmiGlobalVarsStrt
+      sta.w NMITIMEN
+      stz.b GLOBALS.nmi.busy-NmiGlobalVarsStrt
+
+      lda.b GLOBALS.nmi.frameOver-NmiGlobalVarsStrt
+      beq +
+        dec.b GLOBALS.nmi.frameOver-NmiGlobalVarsStrt
+
++
+_skipNmi:
+  lda.w RDNMI         ;reset nmi flag
+	rep #$39
+
+	ply
+	plx
+	pld
+	plb
+	pla
+	rti				;return from nmi
+
+
+core.nmi.init:
+	php
+
+	sep #$20
+	lda #INIDSP_FORCE_BLANK			;enter forced blank
+	sta.l INIDSP
+	lda #0		;clear zero page
+	ldy #NmiGlobalVarsEnd-NmiGlobalVarsStrt
+	ldx #NmiGlobalVarsStrt
+
+	jsr ClearWRAM
+  jsr ClearVRAM
+	jsr ClearCGRAM
+
+    lda.w GLOBAL.interruptFlags
+	ora #NMITIMEN_NMI_ENABLE |	NMITIMEN_AUTO_JOY_READ	;enable screen and nmi, auto joypad
+	sta.w GLOBAL.interruptFlags
+
+	sta.l NMITIMEN
+    lda #0
+	sta.l SETINI			;dont set this during nmi cause if the overscan flag is changed mid-nmi, it might result in screw ups with the nmi timing
+
+	lda.l RDNMI	;pull up nmi line
+	lda.l TIMEUP	;pull up irq line
+
+	stz.w ScreenBrightness
+  stz.w GLOBALS.nmi.frame.busy
+  stz.w GLOBALS.nmi.busy
+  stz.w GLOBAL.HDMA.CHANNEL.ENABLE
+  stz.w GLOBAL.HDMA.CHANNEL.ENABLE.CURRENT
+  stz.w GLOBAL.DMA_BUFFER.1.DMAP
+  stz.w GLOBAL.DMA_BUFFER.2.DMAP
+  stz.w GLOBAL.DMA_BUFFER.3.DMAP
+  stz.w GLOBAL.DMA_BUFFER.4.DMAP
+  stz.w GLOBAL.DMA_BUFFER.5.DMAP
+  stz.w GLOBAL.DMA_BUFFER.6.DMAP
+  stz.w GLOBAL.DMA_BUFFER.7.DMAP
+  stz.w GLOBAL.DMA_BUFFER.8.DMAP
+	plp
+	cli
+	rts
+
+/**
+* temporally prevent nmis from happening.
+* useful if working on transaction that could be corrupted by asynchronous writes.
+* reenable with core.nmi.start
+*/
+core.nmi.stop:
+  pha
+  php
+  sep #$20
+  lda.w GLOBAL.interruptFlags
+  and #NMITIMEN_NMI_ENABLE ~$ff
+  sta.l NMITIMEN
+  plp
+  pla
+  rts
+
+/**
+* reenable temporally stopped nmis
+*/
+core.nmi.start:
+  pha
+  php
+  sep #$20
+  lda.w GLOBAL.interruptFlags
+  sta.l NMITIMEN
+
+  plp
+  pla
+  rts
+
+core.nmi.blankScreen:
+  AX16
+  php
+  sep #$20
+  lda.b #0        ;disable all channels
+  sta.l HDMAEN        ;set hdma channels and disable dma channel
+  sta.w GLOBAL.HDMA.CHANNEL.ENABLE.CURRENT ;buffer for midframe disables
+
+  lda.b #INIDSP_FORCE_BLANK
+  sta.l INIDSP
+  plp
+  rts
+
+/**
+* this is a hack and super dangerous! causes system to hang if nmis don't happen!!
+*/
+core.nmi.waitFrame:
+  lda.l FrameCounter
+-   cmp.l FrameCounter
+    beq -
+
+  rts
+
+.ends

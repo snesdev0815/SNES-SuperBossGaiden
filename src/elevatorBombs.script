@@ -1,0 +1,130 @@
+/**
+* Cutscene where Fausto throws bomb onto player
+*
+*/
+
+  SCRIPT elevatorBombs
+
+  .redef obj.script.slave hashPtr.1
+  .redef obj.block hashPtr.2
+  .redef obj.bomb hashPtr.3
+
+  .redef obj.hud this._tmp
+  .redef obj.player this._tmp+4
+
+;  CUTSCENE_WAIT
+  SET_CUTSCENE_MANDATORY
+
+  HUD_DISABLE obj.hud
+
+  pea lifeform.bomb.CLS.PTR
+  pea BERZERK.FULL
+  pea 0
+  pea 0
+  pei (dimension.position.y+1)
+  pei (dimension.position.x+1)
+  SCRIPT_NEW_TRY lifeform.block.CLS.PTR obj.block
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+
+  ;CUTSCENE_ACQUIRE_OBJECT lifeform.block.CLS.PTR obj.block
+  CUTSCENE_ACQUIRE_OBJECT lifeform.player.CLS.PTR obj.player
+
+  CUTSCENE_WAIT
+
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.throwBomb FALSE
+  WAIT_FOR obj.script.slave
+
+  jsr _doBomb
+  
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.safeThanSorry FALSE
+  WAIT_FOR obj.script.slave
+  jsr _doBomb
+
+  HUD_ENABLE obj.hud
+
+
+  CUTSCENE_WAIT
+
+  SAVE
+  ;done if block is gone
+-  
+
+fdsafdsf:
+  SCRIPT_TRY lifeform.library.getCollisionBasepoint.MTD obj.player
+  bcc ++
+    ;terminate script if player passed block through other means
+    txa
+    clc
+    adc.w #128
+    cmp dimension.position.x+1
+    bcc +
+
+++
+  ldx.w #obj.block
+  SCRIPT_JSR core.object.exists
+  bcc +
+    ;wait as long as current bomb exists
+    ldx.w #obj.bomb
+    SCRIPT_JSR core.object.exists
+    bcc ++
+      rts
+
+++
+  jsr _doBomb
+  bra -
+
++
+  CUTSCENE_WAIT_LONG
+  
+  CUTSCENE_WAIT_LONG
+
+  HUD_DISABLE obj.hud
+
+  LOOP 3
+  LOOP
+  
+  lda.w #Song.stage0.PTR
+  SCRIPT_JSR core.audio.playSong
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.myAss FALSE
+  WAIT_FOR obj.script.slave
+
+  HUD_ENABLE obj.hud  
+  DIE
+
+  ;x-range: 64px
+  .redef X_RANGE 64
+  .redef Y_OFFSET 164
+
+_doBomb:
+  AX16
+  pea 0 ;no berzerk yield
+  pea 0 ;dummy size
+  pea 0
+
+  ;fixed y-pos
+  lda.b dimension.position.y+1
+  sec
+  sbc.w #Y_OFFSET
+  pha
+
+  ;random x-center
+  SCRIPT_JSR core.random.get
+  and.w #X_RANGE-1
+  clc
+  adc.b dimension.position.x+1
+  sec
+  sbc.w #X_RANGE/2
+  pha
+
+  SCRIPT_NEW lifeform.bomb.CLS.PTR obj.bomb
+  pla
+  pla
+  pla
+  pla
+  pla
+  rts

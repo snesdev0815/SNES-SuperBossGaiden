@@ -1,0 +1,320 @@
+/**
+* assorted math support functions
+*
+*/
+
+.include "src/core/math.h"
+.section "core.math"
+
+/**
+* get biggest of two unsigned input integers
+*
+* @param a<int,16bit>   integer 0
+* @param x<int,16bit>   integer 1
+*
+* @return a<int,16bit>	bigger integer
+*/
+core.math.max:
+  AX16
+  phx
+  cmp 1,s
+  bcs +
+    txa
++
+  plx
+	rts
+
+/**
+* get modulo
+*
+* @param a<int,16bit>   x,integer 0
+* @param x<int,16bit>   y,integer 1
+*
+* @return a<int,16bit>  modulo
+*/
+;(x % y = (x + (x*y)/100))
+core.math.mod:
+  AX16
+  pha
+  jsr core.math.mul
+  tax
+  lda #100
+  jsr core.math.div
+  clc
+  adc 1,s
+  sta 1,s
+  pla
+  rts
+
+/**
+* 16bit division x/a -> a,x
+*
+* @param a<int,16bit>   divisor
+* @param x<int,16bit>   dividend
+*
+* @return a<int,16bit>  result
+* @return x<int,16bit>  remainder
+*/
+core.math.div:
+  AX16
+  stz.w GLOBAL.math.scratch
+  ldy.w #1
+  cmp #0
+  bne +
+    TRIGGER_ERROR E_DivisionByZero
+
++
+-   asl a
+    bcs +
+      iny
+      cpy #17
+      bne -
+
++   ror a
+-   pha
+    txa
+    sec
+    sbc 1,s
+    bcc +
+      tax
+
++   rol.w GLOBAL.math.scratch
+    pla
+    lsr a
+    dey
+    bne -
+
+  lda.w GLOBAL.math.scratch
+  rts
+
+
+/**
+* 8bit*8bit multiplication -> unsigned 16bit
+*
+*
+* @param a<int,8bit>   multiplicand a
+* @param x<int,8bit>   multiplicand b
+*
+* @return a<int,16bit>  result lower 16bit
+*/
+core.math.mul.8bit:
+  AX16
+  sep #$20
+  sta.l WRMPYA
+  txa
+  sta.l WRMPYB
+  nop
+  nop
+  nop
+  nop
+  nop
+  nop
+  nop
+  nop
+  rep #$31
+  lda.l RDMPYL
+  rts
+
+
+/**
+* 16bit*16bit multiplication
+*
+* @param a<int,16bit>   multiplicand a
+* @param x<int,16bit>   multiplicand b
+*
+* @return a<int,16bit>  result lower 16bit
+* @return x<int,16bit>  result upper 16bit
+*/
+core.math.mul:
+  AX16
+  sta.w (GLOBAL.math.scratch&$ffff)+0
+  stx.w (GLOBAL.math.scratch&$ffff)+2
+  stz.w (GLOBAL.math.scratch&$ffff)+4
+  stz.w (GLOBAL.math.scratch&$ffff)+6
+  sep #$20
+  lda.b #0
+  ldx.w #$10 ; set binary count to 16 
+    
+-
+    lsr.w (GLOBAL.math.scratch&$ffff)+1      ;multiplier+1 ; divide multiplier by 2 
+    ror.w GLOBAL.math.scratch           ;multiplier
+    bcc +
+
+      lda.w (GLOBAL.math.scratch&$ffff)+6      ;product+2 ; get upper half of product and add multiplicand
+      clc
+      adc.w (GLOBAL.math.scratch&$ffff)+2      ;multiplicand
+      sta.w (GLOBAL.math.scratch&$ffff)+6      ; product+2
+      lda.w (GLOBAL.math.scratch&$ffff)+7      ; product+3 
+      adc.w (GLOBAL.math.scratch&$ffff)+3      ; multiplicand+1
+
++
+    ror ; rotate partial product 
+    sta.w (GLOBAL.math.scratch&$ffff)+7      ; product+3 
+    ror.w (GLOBAL.math.scratch&$ffff)+6      ; product+2
+    ror.w (GLOBAL.math.scratch&$ffff)+5      ; product+1 
+    ror.w (GLOBAL.math.scratch&$ffff)+4      ; product 
+    dex
+    bne -
+
+  rep #$31
+  lda.w (GLOBAL.math.scratch&$ffff)+4
+  ldx.w (GLOBAL.math.scratch&$ffff)+6
+  rts
+
+
+/**
+* get smallest of two unsigned input integers
+*
+* @param a<int,16bit>   integer 0
+* @param c<int,16bit>   integer 1
+*
+* @return a<int,16bit>  smaller integer
+*/
+core.math.min:
+    AX16
+    phx
+    cmp 1,s
+    bcc +
+      txa
+      
++
+    plx
+    rts
+
+
+
+/**
+* get absolute value
+*
+* @param a<int,16bit>   integer 0
+*
+* @return a<int,16bit>  absolute value
+*/
+core.math.abs:
+  AX16
+    bpl +
+      eor.w #$ffff
+      inc a
+
++
+    rts
+
+
+/**
+* get value from lookup table, range is 0pi-2pi
+*
+* @param a<int,8bit>   angle, 0-255
+*
+* @return a<int,16bit>  signed radiant
+*/
+core.math.sin:
+  AX16
+    cmp #MATH.2_PI
+    bcc +
+      pha
+      TRIGGER_ERROR E_MathLUTBadPos
++
+    asl a
+    phx
+    tax
+    lda.l math.lut.sin,x
+    plx
+    rts
+
+
+/**
+* get value from lookup table, range is 0pi-2pi
+*
+* @param a<int,8bit>   angle, 0-255
+*
+* @return a<int,16bit>  signed radiant
+*/
+core.math.cos:
+  AX16
+.if DEBUG == 1    
+    cmp #MATH.2_PI
+    bcc +
+      pha
+      TRIGGER_ERROR E_MathLUTBadPos
++
+.endif
+    asl a 
+    phx
+    tax
+    lda.l math.lut.cos,x
+    plx
+    rts
+
+;6bit entries, 4kb table
+core.math.atan2:
+  AX16
+    ;php
+    ;rep #$31
+    ;and.w #$ff
+.if DEBUG == 1    
+    cpy #MATH.ATAN2.MAX +1
+    bcc +
+      pha
+      TRIGGER_ERROR E_MathLUTBadPos
++
+    cpx #MATH.ATAN2.MAX +1
+    bcc +
+      pha
+      TRIGGER_ERROR E_MathLUTBadPos
++
+.endif
+    phy
+    tya
+    lsr a
+    and.w #$3f
+    pha
+    txa
+    lsr a
+    and.w #$3f
+    asl a
+    asl a
+    asl a
+    asl a
+    asl a
+    asl a
+    ora 1,s
+    ply
+    
+    phx
+    tax
+    lda.l math.lut.atan2,x
+    plx
+    ply
+    and.w #$ff
+    ;plp
+    rts
+
+core.math.direction2angle:
+  AX16
+  cmp #MATH.2_PI
+  bcc +
+    pha
+    TRIGGER_ERROR E_MathLUTBadPos
++
+  asl a
+  tax
+  lda.l math.lut.direction2angle,x
+  rts
+
+extend.math.roughDistance:
+  AX16
+  lda 10,s
+  sec
+  sbc 6,s
+  jsr core.math.abs
+  sta 6,s
+
+  lda 8,s
+  sec
+  sbc 4,s
+  jsr core.math.abs
+  clc
+  adc 6,s
+  rtl
+
+.ends

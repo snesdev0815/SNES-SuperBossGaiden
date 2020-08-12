@@ -1,0 +1,580 @@
+/**
+* Screen manager
+*
+* Provides current screen dimensions and unified means to convert absolute to screen coordinates,
+* also handles "camera" focus on object(s).
+*
+*/
+
+
+.include "src/core/screen.h"
+.section "screenManager"
+
+
+core.screen.init:
+  AX16
+  stz.w GLOBAL.screen.position.x
+  stz.w (GLOBAL.screen.position.x &$ffff) +1
+  stz.w GLOBAL.screen.position.y
+  stz.w (GLOBAL.screen.position.y &$ffff) +1
+  stz.w GLOBAL.screen.position.right.x
+  stz.w GLOBAL.screen.position.bottom.y
+  lda.w #SCREEN.DEFAULT.SIZE.X
+  sta.w GLOBAL.screen.size.x
+  lda.w #SCREEN.DEFAULT.SIZE.Y
+  sta.w GLOBAL.screen.size.y
+
+  stz.w GLOBAL.screen.min.x
+  stz.w GLOBAL.screen.min.y
+  stz.w GLOBAL.screen.shake.offset.x
+
+  lda.w #$ffff - SCREEN.DEFAULT.SIZE.X
+  sta.w GLOBAL.screen.max.x
+  lda.w #$ffff - SCREEN.DEFAULT.SIZE.Y
+  sta.w GLOBAL.screen.max.y
+
+  jmp core.screen.blur
+
+/**
+* get position of upper left corner of screen
+*
+* @return x<int, 16bit>	current x-pos
+* @return y<int, 16bit>	current y-pos
+*/
+core.screen.getPosition:
+  AX16
+  ldx.w (GLOBAL.screen.position.x &$ffff) +1
+  ldy.w (GLOBAL.screen.position.y &$ffff) +1
+  rts
+
+
+
+
+
+/**
+* convert absolute position to screen-relative position
+*
+* useful to check if object(sprite, bg) is onscreen and to convert 
+*
+* @param x<int, 16bit> absolute x-position
+* @param y<int, 16bit> absolute y-position
+*
+* @return x<int, 16bit>	screen-relative x-position
+* @return y<int, 16bit>	screen-relative y-position
+* @return c	true if position is on screen
+*/
+core.screen.convertAbsoluteToScreen:
+  AX16
+  pha
+  cpx.w (GLOBAL.screen.position.x &$ffff) +1
+  bcc +
+
+  cpy.w (GLOBAL.screen.position.y &$ffff) +1
+  bcc +
+
+  txa
+  sta 1,s
+  lda.w (GLOBAL.screen.position.x &$ffff) +1
+  clc
+  adc.w GLOBAL.screen.size.x
+  cmp 1,s
+  bcc +
+
+  tya
+  sta 1,s
+  lda.w (GLOBAL.screen.position.y &$ffff) +1
+  clc
+  adc.w GLOBAL.screen.size.y
+  cmp 1,s
+  bcc +
+
+  ;position is onscreen, convert to screen-relative
+  txa
+  sec
+  sbc.w (GLOBAL.screen.position.x &$ffff) +1
+  tax
+
+  tya
+  sec
+  sbc.w (GLOBAL.screen.position.y &$ffff) +1
+  tay
+
+  pla
+  sec
+  rts
+
+;outsideScreen:
++ pla
+  clc
+  rts
+
+_immediateFocus:
+  AX16
+  ;check if object is present before calling method on it.
+  jsr _setTargetPosition
+  bcc +
+    lda.w GLOBAL.screen.target.x
+    stz.w GLOBAL.screen.position.x
+    sta.w (GLOBAL.screen.position.x &$ffff) +1
+
+    lda.w GLOBAL.screen.target.y
+    stz.w GLOBAL.screen.position.y
+    sta.w (GLOBAL.screen.position.y &$ffff) +1
+
++
+  jmp _clampPositionToScreen
+
+
+/**
+* check if position is on screen
+*
+* useful to check if object(sprite, bg) is onscreen and to convert 
+*
+* @param x<int, 16bit> absolute x-position
+* @param y<int, 16bit> absolute y-position
+*
+* @return x<int, 16bit> screen-relative x-position
+* @return y<int, 16bit> screen-relative y-position
+* @return c true if position is on screen
+*/
+core.screen.checkIfOnScreen:
+  cpx.w (GLOBAL.screen.position.x &$ffff) +1
+  bcc +
+
+  txa
+  sec
+  sbc.w GLOBAL.screen.size.x
+  cmp.w (GLOBAL.screen.position.x &$ffff) +1
+  bcs +
+
+  cpy.w (GLOBAL.screen.position.y &$ffff) +1
+  bcc +
+
+  tya
+  sec
+  sbc.w GLOBAL.screen.size.y
+  cmp.w (GLOBAL.screen.position.y &$ffff) +1
+  bcs +
+
+  sec
+  rts
+
++ clc
+  rts
+
+/**
+* remove object focus
+*/
+core.screen.blur:
+  AX16
+  lda.w #VOID
+  sta.w GLOBAL.screen.focussedObject
+  rts
+
+/**
+* focus screen on object
+* @param 1<int, 32bit> target object
+*/
+core.screen.focus.smooth:
+  AX16
+  lda 4-1,s
+  sta.w (GLOBAL.screen.focussedObject &$ffff +2 )
+  lda 6-1,s
+  sta.w GLOBAL.screen.focussedObject
+  rts
+
+/**
+* focus screen on object
+* @param 1<int, 32bit> target object
+*/
+core.screen.focus.immediate:
+  lda 4-1,s
+  sta.w (GLOBAL.screen.focussedObject &$ffff +2)
+  lda 6-1,s
+  sta.w GLOBAL.screen.focussedObject
+  jmp _immediateFocus
+
+
+/**
+* set maximum scrollable area
+* not really! obsolete
+*/
+core.screen.setPlayfieldSize:
+  AX16
+  txa
+  sta.w GLOBAL.screen.playfield.size.x
+  sec
+  sbc.w GLOBAL.screen.size.x
+  dec a ;hack to hide garbled bottom line
+  sta.w GLOBAL.screen.max.x
+  tya
+  sta.w GLOBAL.screen.playfield.size.y
+  sec
+  sbc.w GLOBAL.screen.size.y
+  dec a ;hack to hide garbled bottom line
+  sta.w GLOBAL.screen.max.y
+  rts
+
+/**
+* set maximum scrollable area
+*/
+core.screen.setPlayfieldBorder:
+  AX16
+  lda FASTCALL.ARG.0-1,s
+  sta.w GLOBAL.screen.min.x
+  lda FASTCALL.ARG.1-1,s
+  sta.w GLOBAL.screen.min.y
+  lda FASTCALL.ARG.2-1,s
+  sec
+  sbc.w GLOBAL.screen.size.x
+  dec a ;hack to hide garbled line, whatever...
+  sta.w GLOBAL.screen.max.x
+  lda FASTCALL.ARG.3-1,s
+  sec
+  sbc.w GLOBAL.screen.size.y
+  dec a ;hack to hide garbled line, whatever...
+  sta.w GLOBAL.screen.max.y
+  rts
+
+
+_setTargetPosition:
+  AX16
+  ldx.w #GLOBAL.screen.focussedObject
+  jsr core.object.exists
+  bcs +
+    rts
+
++
+  pea LIFEFORM.COMMAND.GET_CAMERA_DATA
+  CALL lifeform.library.oncommand.MTD GLOBAL.screen.focussedObject
+  sta 1,s
+  pla
+  bcs +
+    rts
+
++    
+  sta.w GLOBAL.screen.direction
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  and.w #$3
+  sta.w GLOBAL.screen.mode
+
+  lda.w GLOBAL.screen.direction
+  and.w #$7
+  sta.w GLOBAL.screen.direction
+
+  phx
+  phy
+
+  lda.w GLOBAL.screen.mode
+  asl a
+  tax
+  jsr (_screen.mode.LUT,x)
+
+  ply
+  plx
+
+  lda.w GLOBAL.screen.size.x
+  lsr
+  pha
+  txa
+  sec
+  sbc 1,s
+  bcs ++
+    lda.w #0
+++
+    sta.w GLOBAL.screen.target.x
+    pla
+
+    lda.w GLOBAL.screen.size.y
+    lsr
+    pha
+    tya
+    sec
+    sbc 1,s
+    bcs ++
+      lda.w #0
+++
+  sta.w GLOBAL.screen.target.y
+
+
+  pla
+  sec
+  rts
+
+_screen.mode.LUT:
+  .dw _screen.mode.void
+  .dw _screen.mode.grounded
+  .dw _screen.mode.airborne
+  .dw _screen.mode.void
+
+_screen.mode.void:
+  AX16
+  rts
+
+_screen.mode.grounded:
+_screen.mode.airborne:
+  AX16
+  lda.w GLOBAL.screen.direction
+  asl a
+  tax
+  jmp (_screen.direction.LUT,x)
+
+_screen.direction.LUT:
+  .dw _screen.direction.right
+  .dw _screen.direction.left
+  .dw _screen.direction.down
+  .dw _screen.direction.up
+
+_screen.direction.right:
+  AX16
+  lda 5,s
+  clc
+  adc.w #SCREEN.DIRECTION.OFFSET
+  sta 5,s
+  rts
+
+_screen.direction.left:
+  AX16
+  lda 5,s
+  clc
+  adc.w #-SCREEN.DIRECTION.OFFSET
+  sta 5,s
+  rts
+
+
+_screen.direction.down:
+  AX16
+.if IS_3D == 1  
+  lda 3,s
+  clc
+  adc.w #SCREEN.DIRECTION.OFFSET
+  sta 3,s
+.endif
+    rts
+
+_screen.direction.up:
+  AX16
+.if IS_3D == 1  
+  lda 3,s
+  clc
+  adc.w #-SCREEN.DIRECTION.OFFSET
+  sta 3,s
+.endif  
+  rts
+
+/**
+* called every frame, focusses on target object if there is one present
+*/
+core.screen.play:
+  AX16
+  lda.w GLOBAL.screen.shake.offset.x
+  beq +
+    bmi ++
+      dec.w GLOBAL.screen.shake.offset.x
+      bra +
+++    
+      inc.w GLOBAL.screen.shake.offset.x
+
++  
+  jsr _setTargetPosition
+  bcc +
+    ;smooth sine move towards target object
+    lda.w (GLOBAL.screen.position.x & $ffff) +2
+    pha
+    lda.w GLOBAL.screen.position.x
+    pha
+    lda.w GLOBAL.screen.target.x
+    jsr _moveToTarget
+    pla
+    sta.w GLOBAL.screen.position.x
+    pla
+    sta.w (GLOBAL.screen.position.x & $ffff) +2
+
+
+    lda.w (GLOBAL.screen.position.y & $ffff) +2
+    pha
+    lda.w GLOBAL.screen.position.y
+    pha
+    lda.w GLOBAL.screen.target.y
+    jsr _moveToTarget.y
+    pla
+    sta.w GLOBAL.screen.position.y
+    pla
+    sta.w (GLOBAL.screen.position.y & $ffff) +2
+
++
+  jmp _clampPositionToScreen
+
+_clampPositionToScreen:
+  AX16
+  lda.w (GLOBAL.screen.position.x&$ffff) +1
+  cmp.w GLOBAL.screen.min.x
+  bcs +
+    lda.w GLOBAL.screen.min.x
+    sta.w (GLOBAL.screen.position.x&$ffff) +1
+
++
+  lda.w (GLOBAL.screen.position.x&$ffff) +1
+  cmp.w GLOBAL.screen.max.x
+  bcc +
+    lda.w GLOBAL.screen.max.x
+    sta.w (GLOBAL.screen.position.x&$ffff) +1
+
++
+  lda.w (GLOBAL.screen.position.y&$ffff) +1
+  cmp.w GLOBAL.screen.min.y
+  bcs +
+    lda.w GLOBAL.screen.min.y
+    sta.w (GLOBAL.screen.position.y&$ffff) +1
+
++
+  lda.w (GLOBAL.screen.position.y&$ffff) +1
+  cmp.w GLOBAL.screen.max.y
+  bcc +
+    lda.w GLOBAL.screen.max.y
+    sta.w (GLOBAL.screen.position.y&$ffff) +1
+
++
+
+  ;update screen border pos
+  lda.w GLOBAL.screen.position.x
+  clc
+  adc.w GLOBAL.screen.size.x
+  sta.w GLOBAL.screen.position.right.x
+  lda.w GLOBAL.screen.position.y
+  clc
+  adc.w GLOBAL.screen.size.y
+  sta.w GLOBAL.screen.position.bottom.y
+  
+  rts
+
+
+_getCustomTableValue.y:
+  AX16
+  jsr core.math.abs
+  asl a
+  cmp #core.screen.move.lut.end - core.screen.move.lut
+  bcc +
+    lda #core.screen.move.lut.end - core.screen.move.lut -2
+
++
+  tax
+  lda.w GLOBAL.screen.mode
+  cmp.w #SCREEN.BOUNDARY.AIRBORNE
+  beq +
+
+  lda.l core.screen.move.lut,x
+  rts
+
++
+  lda.l core.screen.move.airborne.lut,x
+  rts
+
+_getCustomTableValue:
+  AX16
+  jsr core.math.abs
+  asl a
+  cmp #core.screen.move.lut.end - core.screen.move.lut
+  bcc +
+    lda #core.screen.move.lut.end - core.screen.move.lut -2
+
++
+  tax
+  lda.l core.screen.move.lut,x
+asjdasldjas:  
+  rts
+
+
+/**
+*  smooth move towards target
+*
+* @param a<int, 16bit>  target position
+* @param 1<int, 32bit>  current position
+*
+* @return 1<int, 32bit>  updated position
+*/
+_moveToTarget:
+  AX16
+  pha
+  sec
+  sbc 7-1,s
+  bcc +
+
+  jsr _getCustomTableValue
+
+  clc
+  adc 6-1,s
+  sta 6-1,s
+  bcc ++
+    sep #$20
+    lda 8-1,s
+    inc a
+    sta 8-1,s
+
+++
+  bra ++
+
++
+  jsr _getCustomTableValue
+  sta 1,s
+  
+  lda 6-1,s
+  sec
+  sbc 1,s
+  sta 6-1,s
+  bcs ++
+    sep #$20
+    lda 8-1,s
+    dec a
+    sta 8-1,s
+
+++
+  rep #$31
+  pla
+  rts
+
+
+_moveToTarget.y:
+  AX16
+  pha
+  sec
+  sbc 7-1,s
+  bcc +
+
+  jsr _getCustomTableValue
+
+  clc
+  adc 6-1,s
+  sta 6-1,s
+  bcc ++
+    sep #$20
+    lda 8-1,s
+    inc a
+    sta 8-1,s
+
+++
+  bra ++
+
++
+  jsr _getCustomTableValue.y
+  sta 1,s
+  
+  lda 6-1,s
+  sec
+  sbc 1,s
+  sta 6-1,s
+  bcs ++
+    sep #$20
+    lda 8-1,s
+    dec a
+    sta 8-1,s
+
+++
+  rep #$31
+  pla
+  rts
+
+.ends

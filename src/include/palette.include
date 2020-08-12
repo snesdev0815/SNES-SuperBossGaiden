@@ -1,0 +1,21 @@
+/**
+* Custom PPU Palette/CGRAM file includes
+*
+*/
+
+.Section "PaletteAnimationLUT" superfree
+PaletteAnimationLUT:
+  PTRLONG PaletteAnimationLUT PALETTE.black
+  PTRLONG PaletteAnimationLUT PALETTE.boss.blink
+  PTRLONG PaletteAnimationLUT PALETTE.boss.danger
+  PTRLONG PaletteAnimationLUT PALETTE.hud.super
+  PTRLONG PaletteAnimationLUT PALETTE.greyscale
+  PTRLONG PaletteAnimationLUT PALETTE.treadmill
+.ends 
+
+  PALETTE_ANIMATION black
+  PALETTE_ANIMATION boss.blink
+  PALETTE_ANIMATION boss.danger
+  PALETTE_ANIMATION hud.super
+  PALETTE_ANIMATION greyscale
+  PALETTE_ANIMATION treadmill

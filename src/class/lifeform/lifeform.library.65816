@@ -1,0 +1,1793 @@
+/**
+* Helper functions for lifeforms
+*
+*/
+
+.include "src/class/lifeform/lifeform.library.h"
+.section "lifeform.library"
+
+  METHOD oncommand
+  TRIGGER_ERROR E_abstractClass
+  rts
+
+/**
+* same as above, but never switches to lower update frequency when offscreen
+*/
+lifeform.library.evaluate.alwaysOn:
+  AX16
+  lda lifeform.evaluate.wait
+  and.w #$ff
+  beq +
+    dec lifeform.evaluate.wait
+    rts
+
++  
+  lda lifeform.controller.type
+  and.w #$ff
+  cmp #LIFEFORM.CONTROLLER.MAX
+  bcc +
+    TRIGGER_ERROR E_Todo
+
++
+  asl a
+  tax
+  jmp (_controller.type.lut,x)
+
+extern.lifeform.init:
+  AX16  
+  jsl extern.lifeform.movement.init
+
+  lda lifeform.controller.type
+  and.w #$ff
+  cmp #LIFEFORM.CONTROLLER.MAX
+  bcc +
+    TRIGGER_ERROR E_Todo
+
++
+  asl a
+  tax
+  jsr (_controller.type.init.lut,x)
+  rtl
+
+extern.lifeform.animate:
+  AX16
+  lda lifeform.state
+  and.w #$ff
+  cmp.w #LIFEFORM.STATE.DYING
+  beq +
+
+  lda lifeform.invincibility.timer
+  and.w #$ff
+  bne +
+
+    jsr sprite.library.playAnimation
+    rtl
+
+;blinking
++
+  lda animation.timer
+  and.w #%11
+  beq +
+    jsr sprite.library.playAnimation
+    rtl
+
++
+  sep #$20
+  inc animation.timer
+  rep #$31
+  rtl
+
+;@see LIFEFORM.CONTROLLER.
+_controller.type.lut:
+  .dw lifeform.controller.joypad.main.evaluate
+  .dw lifeform.controller.joypad.main.evaluate
+  .dw lifeform.controller.joypad.sidekick.evaluate
+  .dw lifeform.controller.ai.enemy.evaluate
+  .dw lifeform.controller.ai.npc.evaluate
+  .dw lifeform.controller.ai.sidekick.evaluate
+  .dw lifeform.controller.ai.animal.evaluate
+  .dw lifeform.controller.ai.dummy.evaluate
+  .dw lifeform.controller.cutscene.evaluate
+
+
+;@see LIFEFORM.CONTROLLER.
+_controller.type.init.lut:
+  .dw lifeform.controller.joypad.main.init
+  .dw lifeform.controller.joypad.main.init
+  .dw lifeform.controller.joypad.sidekick.init
+  .dw lifeform.controller.ai.enemy.init
+  .dw lifeform.controller.ai.npc.init
+  .dw lifeform.controller.ai.sidekick.init
+  .dw lifeform.controller.ai.animal.init
+  .dw lifeform.controller.ai.dummy.init
+  .dw lifeform.controller.cutscene.init
+
+lifeform.controller.ai.sidekick.init:
+lifeform.controller.ai.dummy.init:
+lifeform.controller.ai.cutscene.init:
+lifeform.controller.ai.enemy.init:
+lifeform.controller.ai.npc.init:
+lifeform.controller.ai.animal.init:
+  rts
+
+lifeform.controller.ai.sidekick.evaluate:
+lifeform.controller.ai.dummy.evaluate:
+lifeform.controller.ai.enemy.evaluate:
+lifeform.controller.ai.animal.evaluate:
+lifeform.controller.cutscene.evaluate:
+lifeform.controller.ai.npc.evaluate:
+lifeform.controller.cutscene.init:
+  rts
+
+lifeform.library.focusOnSelf:
+  AX16
+  pei (iterator.self)
+  pei (iterator.self + 2)
+  jsr core.screen.focus.smooth
+  pla
+  pla
+  rts
+
+lifeform.fruit.reportAttack:
+  AX16
+  ldx.w #GLOBAL.watchdog
+  jsr core.object.exists
+  bcc +
+    lda OBJECT.CALL.ARG.3 + 2,s
+    and.w #$ff
+    beq ++
+    cmp.w #lifeform.player.CLS.PTR
+    bne +
+
+++
+    lda OBJECT.CALL.ARG.3 + 2,s
+    pha
+    lda OBJECT.CALL.ARG.2 + 2 + 2,s
+    pha
+    CALL lifeform.library.oncommand.MTD GLOBAL.watchdog LIFEFORM.COMMAND.ORDER_ATTACK
+    pla
+    pla
+
++    
+  rts
+
+.redef OFFSET 0
+lifeform.library.setBasepointPosition:
+  AX16
+  lda OBJECT.CALL.ARG.1+OFFSET,s
+  stz.b dimension.position.x
+  sec
+  sbc dimension.collision.basepoint.x
+  sta.b dimension.position.x + 1
+
+  lda OBJECT.CALL.ARG.2+OFFSET,s
+  stz.b dimension.position.y
+  sec
+  sbc dimension.collision.basepoint.y  
+  sta.b dimension.position.y + 1
+  
+  sep #$20
+  lda OBJECT.CALL.ARG.3+OFFSET,s
+  cmp dimension.direction
+  sta dimension.direction
+  rep #$31
+  beq +
+    lda.w #ANIMATION.FLAGS.X_MIRROR
+    trb animation.flags.static
+    lda dimension.direction
+    and.w #$ff
+    cmp.w #SPRITE.DIRECTION.RIGHT
+    beq ++
+      lda.w #ANIMATION.FLAGS.X_MIRROR
+      tsb animation.flags.static
+
+++    
+
++  
+  rts
+
+
+  CALLBACK movement.void
+  rts
+
+  CALLBACK void
+  rts
+
+  CALLBACK lifeform.turn
+  lda lifeform.controller.current.actions
+  eor.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT)
+  sta lifeform.controller.current.actions
+  rts
+    
+  METHOD getAnimationBase
+  lda lifeform.animation.base
+  rts
+
+  CLASS lifeform.library oncommand getAnimationBase
+
+.ends
+
+.base BSL
+.bank BANK.PROGRAM_EXT
+
+.section "extend.lifeform"
+
+
+.redef OFFSET 3
+/**
+* @param a: animation base
+* @param x: abilities
+*/
+extern.lifeform.initialize:
+  AX16
+  stx lifeform.abilities
+
+  sta lifeform.animation.base   
+  lda OBJECT.CALL.ARG.1+OFFSET,s
+  sta.b dimension.position.x + 1
+
+  lda OBJECT.CALL.ARG.2+OFFSET,s
+  sta.b dimension.position.y + 1 
+
+  sep #$20
+  lda #LIFEFORM.CONTROLLER.AI.NPC
+  sta.b lifeform.controller.type
+  rep #$31
+
+  lda OBJECT.CALL.ARG.5+OFFSET,s
+  sta lifeform.berzerk.yield
+
+  ;set default targets
+  lda #(OBJECT.PROPERTIES.isCollidable | OBJECT.PROPERTIES.isPlayer | OBJECT.PROPERTIES.isLifeform)
+  sta lifeform.target.properties
+
+  lda.w #ANIMATION.FLAGS.IS_LOOPING
+  tsb animation.flags.static
+
+  lda.w #OAM.PRIORITY.2
+  sta animation.buffer.flags
+
+  lda.w #$7
+  sta animation.speed
+
+  lda lifeform.animation.base
+  SCRIPT_JSR sprite.library.startAnimation.try
+  bcs +
+    ;crappy stack hack
+    SCRIPT_JSR sprite.library.deallocate
+    lda #OBJR_kill
+    sta 3+3,s
+    ;directly return to object instanciator
+    lda 3,s
+    tax
+    lda 4,s
+    sta 3,s
+    sep #$20
+    txa
+    sta 5,s
+    rep #$31
+    pla
+    rtl
+    
++  
+  ;set bg collision basepoint
+  lda dimension.size.x
+  lsr a
+  sta dimension.collision.basepoint.x
+
+  lda dimension.size.y
+  sec
+  sbc.w #4
+  sta dimension.collision.basepoint.y
+
+  lda #LIFEFORM.DIAMETER.DEFAULT
+  sta dimension.collision.diameter
+
+  lda.w #200
+  sta lifeform.speed
+
+  lda.w #1
+  sta lifeform.power
+
+
+  lda.w #LIFEFORM.HITPOINTS
+  sta lifeform.hitpoints
+
+  ;bouncyness and hitpoints can be directly gotten from animation id
+  lda.w #2
+  sta lifeform.bouncyness
+
+  jsl extern.lifeform.init 
+  jsl extern.lifeform.turnToTarget
+  sec
+  rtl
+
+
+
+extern.lifeform.turnToTarget:
+  AX16
+  lda lifeform.target.properties
+  jsl extern.lifeform.seekTarget
+  bcc ++
+
+  SCRIPT_CALL lifeform.library.getCollisionBasepoint.MTD lifeform.target.object
+
+  txa
+  sec
+  sbc dimension.collision.basepoint.x
+  cmp dimension.position.x+1
+  bcc +
+    ;player is right
+    sep #$20
+    lda #SPRITE.DIRECTION.RIGHT
+    sta dimension.direction
+    rep #$31    
+    lda lifeform.controller.current.actions
+    and.w #LIFEFORM.ABILITIES.MOVE.LEFT ~ $ffff
+    ora.w #LIFEFORM.ABILITIES.MOVE.RIGHT
+    sta lifeform.controller.current.actions
+    lda.w #ANIMATION.FLAGS.X_MIRROR
+    trb animation.flags.static    
+    sec
+    bra ++
+
++
+    ;player is left
+    sep #$20
+    lda #SPRITE.DIRECTION.LEFT
+    sta dimension.direction
+    rep #$31    
+    lda lifeform.controller.current.actions
+    and.w #LIFEFORM.ABILITIES.MOVE.RIGHT ~ $ffff
+    ora.w #LIFEFORM.ABILITIES.MOVE.LEFT
+    sta lifeform.controller.current.actions
+    lda.w #ANIMATION.FLAGS.X_MIRROR
+    tsb animation.flags.static    
+    sec
+++    
+  rtl
+
+
+.redef OFFSET 3
+extern.lifeform.onAttack:
+  AX16
+  ;power * bouncyness = speed
+  lda lifeform.condition
+  and.w #$ff
+  cmp.w #LIFEFORM.CONDITION.ETHEREAL
+  bne +
+    clc
+    rtl
+
++
+  lda lifeform.invincibility.invisible.timer
+  and.w #$ff
+  beq +
+    clc
+    rtl
+
++  
+  jsr _hitFreeze
+
+  ;is dead?
+  lda lifeform.hitpoints
+  beq +
+  sec
+  sbc OBJECT.CALL.ARG.4+OFFSET,s
+  bcc +
+
+  sta lifeform.hitpoints
+
+  lda OBJECT.CALL.ARG.4+OFFSET,s
+  ldx lifeform.bouncyness
+  SCRIPT_JSR core.math.mul
+  sta dimension.speed.x
+  sta dimension.speed.y
+
+  ;direction
+  lda OBJECT.CALL.ARG.5+OFFSET,s
+  and.w #$ff
+  SCRIPT_JSR core.math.cos
+  ldx dimension.speed.x
+  SCRIPT_JSR core.math.mul
+  sta dimension.speed.x
+
+  lda OBJECT.CALL.ARG.5+OFFSET,s
+  and.w #$ff
+  SCRIPT_JSR core.math.sin
+  ldx dimension.speed.y
+  SCRIPT_JSR core.math.mul
+  sta dimension.speed.y
+
+  jsl extern.lifeform.getHurt
+
+  lda.w #AUDIO.EFFECT.HURT
+  jsl extern.dimension.playSoundEffect
+
+  ;yield small berzerk value
+  lda.w #LIFEFORM.ATTACK.BERZERK.RETURN
+  sec
+  rtl
+
+extern.lifeform.onKill:
++
+  ;dead
+  lda lifeform.berzerk.yield  
+  beq +
+    SCRIPT_JSR interface.dimension.getCenterPosition
+    pei (lifeform.berzerk.yield)
+    phy
+    phx
+    SCRIPT_NEW_TRY sprite.berzerk.return.CLS.PTR VOID
+    pla
+    pla
+    pla
+    stz lifeform.berzerk.yield  
+
++
+  stz lifeform.hitpoints
+
+  lda OBJECT.CALL.ARG.4+OFFSET,s
+  ldx lifeform.bouncyness
+  SCRIPT_JSR core.math.mul
+  asl a
+  sta dimension.speed.x
+  sta dimension.speed.y
+
+  ;direction
+  lda OBJECT.CALL.ARG.5+OFFSET,s
+  and.w #$ff
+  SCRIPT_JSR core.math.cos
+  ldx dimension.speed.x
+  SCRIPT_JSR core.math.mul
+  sta dimension.speed.x
+
+  lda OBJECT.CALL.ARG.5+OFFSET,s
+  and.w #$ff
+  SCRIPT_JSR core.math.sin
+  ldx dimension.speed.y
+  SCRIPT_JSR core.math.mul
+  sta dimension.speed.y
+
+-
+  jsr lifeform.library.die
+
+  lda.w #AUDIO.EFFECT.HURT
+  jsl extern.dimension.playSoundEffect
+
+  lda.w #LIFEFORM.ATTACK.BERZERK.RETURN
+  sec
+  rtl
+
+extern.lifeform.getHurt:
+  AX16
+  sep #$20
+  lda #LIFEFORM.STATE.HURT
+  sta lifeform.state
+  lda.b #255
+  sta lifeform.action.age
+  rep #$31  
+  rtl
+
+lifeform.library.die:
+  AX16
+  sep #$20
+  lda #LIFEFORM.STATE.DYING
+  sta lifeform.state
+  lda.b #255
+  sta lifeform.action.age
+  rep #$31  
+  rts
+
+extern.lifeform.warpToPlayer:
+  AX16
+  lda lifeform.state
+  and.w #$ff
+  cmp.w #LIFEFORM.STATE.DYING
+  beq +
+  cmp.w #LIFEFORM.STATE.SUICIDE
+  beq +
+    jsl extern.lifeform.throw
+    sep #$20
+    lda.b #LIFEFORM.STATE.WARPING
+    sta lifeform.state
+    rep #$31
++
+  rtl
+
+extern.lifeform.onKnockOut:
+  AX16
+  jsl extern.movement.explodeEnemy
+  sec
+  rtl
+
+extern.lifeform.checkOffscreenKill:
+  AX16
+  
+  lda iterator.properties
+  bit.w #OBJECT.PROPERTIES.isOnScreen
+  bne +
+    ;immediate kill
+    lda lifeform.hitpoints
+    beq ++
+
+    lda.w FrameCounter
+    and.w #$f
+    bne +
+
+      lda.w (GLOBAL.screen.position.x &$ffff) +1
+      clc
+      adc.w #SCREEN.SIZE.X/2
+      sec
+      sbc dimension.position.x +1
+      sec
+      sbc dimension.collision.basepoint.x
+
+      SCRIPT_JSR core.math.abs
+      pha
+      lda.w (GLOBAL.screen.position.y &$ffff) +1
+      clc
+      adc.w #SCREEN.SIZE.Y/2
+      sec
+      sbc dimension.position.y +1
+      sec
+      sbc dimension.collision.basepoint.y
+
+      SCRIPT_JSR core.math.abs
+      clc
+      adc 1,s
+      sta 1,s
+      pla
+      cmp.w #LIFEFORM.OFFSCREEN.KILL_THRESHOLD
+      bcc +
+++      
+        ;could be already dead by now (bomb explode on touch callback), so just try
+        SCRIPT_TRY lifeform.library.kill.MTD iterator.self
+
++
+  rtl
+    
+
+extern.lifeform.onThrow:
+  AX16
+  ;power * bouncyness * 4 = speed
+  lda OBJECT.CALL.ARG.4+OFFSET,s
+  ldx lifeform.bouncyness
+  SCRIPT_JSR core.math.mul
+  sta dimension.speed.x
+  sta dimension.speed.y
+
+  ;direction
+  lda OBJECT.CALL.ARG.5+OFFSET,s
+  and.w #$ff
+  SCRIPT_JSR core.math.cos
+  ldx dimension.speed.x
+  SCRIPT_JSR core.math.mul
+  asl a
+  sta dimension.speed.x
+
+  lda OBJECT.CALL.ARG.5+OFFSET,s
+  and.w #$ff
+  SCRIPT_JSR core.math.sin
+  ldx dimension.speed.y
+  SCRIPT_JSR core.math.mul
+  asl a
+  sta dimension.speed.y
+
+  sep #$20
+  lda #LIFEFORM.STATE.THROWN
+  sta lifeform.state
+  lda.b #255
+  sta lifeform.action.age
+  rep #$31
+
+  ;throw anything we might have held, too
+  jsl extern.lifeform.throw
+
+  lda lifeform.hitpoints
+  bne +
+    jsr lifeform.library.die
+
++  
+
+  lda.w #LIFEFORM.MAX_HITS.THROWN
+  sta.b lifeform.hitcount
+
+  sec
+  rtl
+
+;target_angle = atan2 (target_y - y, target_x - x);
+extern.lifeform.getTargetDirection:
+  AX16
+  ldx.w #iterator.target
+  SCRIPT_JSR core.object.exists
+  bcs +
+    clc
+    rtl
+
++  
+  jsl extern.lifeform.getBasePosition
+  phy
+  phx
+
+  SCRIPT_CALL lifeform.library.getCollisionBasepoint.MTD iterator.target
+
+  tya
+  sec
+  sbc 3,s
+  jsr _reduceDirection
+  tay
+
+  txa
+  sec
+  sbc 1,s
+  jsr _reduceDirection
+  tax
+
+  SCRIPT_JSR core.math.atan2
+
+  plx
+  ply
+  sec
+  rtl
+
+;try to keep sign bit intact
+_reduceDirection:
+  AX16
+  bmi +
+    lsr a
+    lsr a
+    and.w #$3f
+    rts
+
++  
+  lsr a
+  lsr a
+  and.w #$3f
+  ora.w #$40
+  rts
+
+
+extern.lifeform.onGrab:
+  AX16
+  ;can't be grabbed twice
+  lda lifeform.state
+  and.w #$ff
+  cmp.w #LIFEFORM.STATE.GRABBED
+  bne +
+    clc
+    rtl
+
++
+  lda.w #OBJECT.PROPERTIES.hurts
+  trb iterator.properties
+
+  sep #$20
+  lda #LIFEFORM.STATE.GRABBED
+  sta lifeform.state
+  rep #$31
+  sec
+  rtl
+
+
+lifeform.library.attack.punch:
+  SCRIPT_JSR iterator.library.reset
+-
+  lda lifeform.target.properties
+  and.w #OBJECT.PROPERTIES.isLifeform ~$ffff
+  SCRIPT_JSR collision.library.fromAttackDiameter.toDiameter.byProperties
+  bcc +
+    pea LIFEFORM.ATTACK.NORMAL
+    lda dimension.direction
+    and.w #$3
+    tax
+    lda.l lifeform.attack.direction.lut,x
+    and.w #$ff
+    pha
+    pei (lifeform.power)
+    pei (iterator.self)
+    pei (iterator.self + 2)
+    pea LIFEFORM.COMMAND.ATTACK
+    SCRIPT_CALL lifeform.library.oncommand.MTD iterator.target
+    sta 11,s
+    pla
+    plx
+    plx
+    plx
+    pla
+    pla
+    bcc -
+      lda.w #AUDIO.EFFECT.HIT.PUNCH2      
+      jsr _increaseComboCounter
+      jsr _hitFreeze
+
+      bra -
+
++
+  rts
+
+_hitFreeze:
+  AX16
+  lda.w #LIFEFORM.HIT.FREEZE
+  sta lifeform.freeze
+  lda.w #LIFEFORM.HIT.BERZERK.RETURN
+  jmp _addBerzerkCounter
+
+
+_addBerzerkCounter:
+  AX16
+  clc
+  adc lifeform.berzerk.counter
+  cmp.w #LIFEFORM.BERZERK.MAX
+  bcc ++
+    lda.w #LIFEFORM.BERZERK.MAX
+++
+  sta lifeform.berzerk.counter
+  rts
+
+
+lifeform.library.attack.superpunch:
+  SCRIPT_JSR iterator.library.reset
+-
+  lda lifeform.target.properties
+  and.w #OBJECT.PROPERTIES.isLifeform ~$ffff
+  SCRIPT_JSR collision.library.fromAttackDiameter.toDiameter.byProperties
+  bcc +
+    pea LIFEFORM.ATTACK.SUPER
+    lda dimension.direction
+    and.w #$3
+    tax
+    lda.l lifeform.attack.direction.lut,x
+    and.w #$ff
+    pha
+    pei (lifeform.power)
+    pei (iterator.self)
+    pei (iterator.self + 2)
+    pea LIFEFORM.COMMAND.ATTACK
+    SCRIPT_CALL lifeform.library.oncommand.MTD iterator.target
+    sta 11,s
+    pla
+    plx
+    plx
+    plx
+    pla
+    pla
+    bcc -
+      lda lifeform.hitcount
+      beq ++
+        dec lifeform.hitcount
+
+++
+      ;play input effect
+      lda.w #AUDIO.EFFECT.HIT.STRONG
+      jsl extern.dimension.playSoundEffect
+      lda.w #SPRITE.smash.PTR
+      ldx.w #20
+      ldy.w #0
+      jsr lifeform.library.sprite
+
+      jsr _hitFreeze
+
+      bra -
+
++
+  rts
+
+lifeform.library.attack.thrown:
+  lda animation.timer
+  and.w #$3
+  bne +
+  
+  SCRIPT_JSR iterator.library.reset
+-
+  ;thrown stuff just attacks everything
+  lda.w #(OBJECT.PROPERTIES.isEnemy | OBJECT.PROPERTIES.isLifeform | OBJECT.PROPERTIES.isCollidable)
+
+  SCRIPT_JSR collision.library.fromAttackDiameter.toDiameter.byProperties
+  bcc +
+    pea LIFEFORM.ATTACK.THROWN
+    lda dimension.direction
+    and.w #$3
+    tax
+    lda.l lifeform.attack.direction.lut,x
+    and.w #$ff
+    pha
+    pei (lifeform.power)
+    pei (iterator.self)
+    pei (iterator.self + 2)
+    pea LIFEFORM.COMMAND.ATTACK
+    SCRIPT_CALL lifeform.library.oncommand.MTD iterator.target
+    sta 11,s
+    pla
+    plx
+    plx
+    plx
+    pla
+    pla
+    bcc -
+      lda.w #AUDIO.EFFECT.HIT.PUNCH3
+      jsl extern.dimension.playSoundEffect
+
+      lda lifeform.hitcount
+      beq ++
+        dec lifeform.hitcount
+          ldx lifeform.callback.touch.lifeform
+          jsl extern.callback.execute
+++
+      ;play input effect
+      lda.w #SPRITE.smash.PTR
+      ldx.w #0
+      ldy.w #0
+      jsr lifeform.library.sprite
+
+      ;reverse direction on hit
+      jsr lifeform.movement.bounce.x
+      jsr lifeform.movement.bounce.y
+      jsr _hitFreeze
+      bra -
+
++
+  rts
+
+lifeform.library.attack.slide:
+  SCRIPT_JSR iterator.library.reset
+-
+  lda lifeform.target.properties
+  and.w #OBJECT.PROPERTIES.isLifeform ~$ffff
+  SCRIPT_JSR collision.library.fromAttackDiameter.toDiameter.byProperties
+  bcc +
+    pea LIFEFORM.ATTACK.SLIDE
+    lda dimension.direction
+    and.w #$1
+    tax
+    lda.l lifeform.attack_uppercut.direction.lut,x
+    and.w #$ff
+    pha
+    pei (lifeform.power)
+    pei (iterator.self)
+    pei (iterator.self + 2)
+    pea LIFEFORM.COMMAND.ATTACK
+    SCRIPT_CALL lifeform.library.oncommand.MTD iterator.target
+    sta 11,s
+    pla
+    plx
+    plx
+    plx
+    pla
+    pla
+    bcc -
+      lda.w #AUDIO.EFFECT.HIT.DASH
+      jsr _increaseComboCounter
+      ldx #LIFEFORM.DASH.IMPULSE*8
+      ldy #LIFEFORM.DASH.ACCEL*8
+      jsr lifeform.movement.dashAccel
+
+      ;become invincible for a bit after throw so that throwable doesnt hurt self
+      sep #$20
+      lda.b #LIFEFORM.THROW_INVINCIBLE.AGE
+      sta lifeform.invincibility.invisible.timer
+      rep #$31      
+      lda.w #LIFEFORM.HIT.FREEZE/2
+      sta lifeform.freeze
+      lda.w #LIFEFORM.HIT.BERZERK.RETURN
+      jsr _addBerzerkCounter
+
++
+  rts
+
+lifeform.library.attack.kick:
+  SCRIPT_JSR iterator.library.reset
+-
+  lda lifeform.target.properties
+  and.w #OBJECT.PROPERTIES.isLifeform ~$ffff
+  SCRIPT_JSR collision.library.fromAttackDiameter.toDiameter.byProperties
+  bcc +
+    pea LIFEFORM.ATTACK.NORMAL
+    lda dimension.direction
+    and.w #$1
+    tax
+    lda.l lifeform.attack_kick.direction.lut,x
+    and.w #$ff
+    pha
+    pei (lifeform.power)
+    pei (iterator.self)
+    pei (iterator.self + 2)
+    pea LIFEFORM.COMMAND.ATTACK
+    SCRIPT_CALL lifeform.library.oncommand.MTD iterator.target
+    sta 11,s
+    pla
+    plx
+    plx
+    plx
+    pla
+    pla
+    bcc -
+      lda.w #AUDIO.EFFECT.HIT.KICK
+      jsr _increaseComboCounter
+      jsr _hitFreeze
+
+      bra -
+
++
+  rts
+
+_increaseComboCounter:
+  AX16
+  ;combo increase
+  pha
+  lda lifeform.hitcount
+  beq +
+    dec lifeform.hitcount
+
++  
+
+  sep #$20
+  lda.b #LIFEFORM.COMBO.TIMEOUT
+  sta lifeform.combo.timer
+  inc lifeform.combo.counter
+  rep #$31
+  lda lifeform.combo.counter
+  and.w #$ff
+  cmp.w #LIFEFORM.COMBO.SATURATE
+  bne ++
+    lda.w #SPRITE.combo_ready.PTR
+    ldx.w #0
+    ldy.w #0
+    jsr lifeform.library.sprite  
+
+++
+  ;play input effect
+  lda 1,s
+  jsl extern.dimension.playSoundEffect
+  lda.w #SPRITE.smash.PTR
+  ldx.w #20
+  ldy.w #0
+  jsr lifeform.library.sprite
+
+  rep #$31
+  pla
+  rts  
+
+lifeform.library.attack.uppercut:
+  SCRIPT_JSR iterator.library.reset
+-
+  lda lifeform.target.properties
+  and.w #OBJECT.PROPERTIES.isLifeform ~$ffff
+  SCRIPT_JSR collision.library.fromAttackDiameter.toDiameter.byProperties
+  bcc +
+    pea LIFEFORM.ATTACK.UPPERCUT
+    lda dimension.direction
+    and.w #$1
+    tax
+    lda.l lifeform.attack_uppercut.direction.lut,x
+    and.w #$ff
+    pha
+    pei (lifeform.power)
+    pei (iterator.self)
+    pei (iterator.self + 2)
+    pea LIFEFORM.COMMAND.ATTACK
+    SCRIPT_CALL lifeform.library.oncommand.MTD iterator.target
+    sta 11,s
+    pla
+    plx
+    plx
+    plx
+    pla
+    pla
+    bcc -
+      lda.w #AUDIO.EFFECT.HIT.UPPERCUT
+      jsr _increaseComboCounter
+      jsr _hitFreeze
+      lda dimension.acceleration.y
+      clc
+      adc.w #UPPERCUT.HIT.ACCEL
+      sta dimension.acceleration.y
+
+      bra -
+
++
+  rts
+
+
+
+lifeform.attack.direction.lut:
+  .db MATH.315_DEG  ;right
+  .db MATH.225_DEG  ;left
+  .db MATH.090_DEG  ;down
+  .db MATH.270_DEG  ;up
+
+lifeform.attack_kick.direction.lut:
+  .db MATH.000_DEG-4  ;right
+  .db MATH.180_DEG+4  ;left
+
+lifeform.attack_slide.direction.lut:
+  .db MATH.270_DEG+4  ;right
+  .db MATH.270_DEG-4  ;left
+
+lifeform.attack_uppercut.direction.lut:
+  .db MATH.315_DEG-24 ;right
+  .db MATH.225_DEG+24  ;left
+
+lifeform.throw.direction.lut:
+  .db MATH.000_DEG  ;right
+  .db MATH.180_DEG  ;left
+
+extern.lifeform.grabLifeform:
+  AX16
+  pei (iterator.self)
+  pei (iterator.self + 2)
+  SCRIPT_CALL lifeform.library.oncommand.MTD iterator.target LIFEFORM.COMMAND.GRAB
+  plx
+  plx
+  bcs +
+    ;error if grab doesnt suceed
+    TRIGGER_ERROR E_ValueError
+
++
+  jsr  _doGrab
+  rtl
+
+lifeform.library.grab:
+  ldx.w #lifeform.grabbed.object
+  SCRIPT_JSR core.object.exists
+  bcs +
+
+  SCRIPT_JSR iterator.library.reset
+-
+  lda.w #OBJECT.PROPERTIES.isGrabbable
+  SCRIPT_JSR collision.library.fromAttackDiameter.toDiameter.byProperties
+  bcc +
+    pei (iterator.self)
+    pei (iterator.self + 2)
+    SCRIPT_CALL lifeform.library.oncommand.MTD iterator.target LIFEFORM.COMMAND.GRAB
+    plx
+    plx
+    bcc -
+
+_doGrab:
+    lda.w #AUDIO.EFFECT.PUNCH
+    jsl extern.dimension.playSoundEffect
+
+    ;grabbed something, stop    
+    lda iterator.target
+    sta lifeform.grabbed.object
+    lda iterator.target+2
+    sta lifeform.grabbed.object+2
+
+
+    sep #$20
+    ldx #LIFEFORM.STATE.STASHING
+    lda lifeform.condition
+    cmp.b #LIFEFORM.CONDITION.GROUNDED
+    beq ++
+      ldx #LIFEFORM.STATE.JUMPSTASHING
+
+++
+    txa
+    sta lifeform.state
+
+    lda #LIFEFORM.STASH.AGE
+    sta lifeform.action.age
+    rep #$31
+
+    lda.w #LIFEFORM.CARRY.START.Y
+    sta lifeform.carry.y
+
++
+  rts
+
+extern.lifeform.getCarryPosition:
+  AX16
+    lda lifeform.carry.y
+    clc
+    adc dimension.position.y+1
+    clc
+    adc dimension.collision.basepoint.y
+    tay
+    ldx lifeform.carry.x
+    lda dimension.direction    
+    and.w #$ff
+    cmp.w #SPRITE.DIRECTION.RIGHT
+    beq ++
+      txa
+      eor.w #$ffff
+      inc a
+      tax
+
+++
+    txa
+    clc
+    adc dimension.position.x+1
+    clc
+    adc dimension.collision.basepoint.x
+    tax
+    rtl
+
+-
+  lda.w #AUDIO.EFFECT.HIT.FLOOR
+  jml extern.dimension.playSoundEffect
+
+extern.lifeform.throw:
+  AX16
+  ldx.w #lifeform.grabbed.object
+  SCRIPT_JSR core.object.exists
+  bcc +
+    ;cancel if current tile not air
+    jsl extern.lifeform.getCarryPosition
+    phy
+    phx
+    jsl extern.level.getCollisionTile
+    plx
+    plx
+    cmp.w #LEVEL.COLLISION.MODE.NONE
+    bne -
+
+    ;become invincible for a bit after throw so that throwable doesnt hurt self
+    sep #$20
+    lda.b #LIFEFORM.THROW_INVINCIBLE.AGE
+    sta lifeform.invincibility.invisible.timer
+    rep #$31
+
+
+    jsr _getThrowDirection
+    pha
+    cmp.w #MATH.090_DEG
+    bne ++
+      ;get upward boost if throwing down
+      sep #$20
+      lda #LIFEFORM.STATE.JUMPING
+      sta lifeform.state
+
+      lda #LIFEFORM.CONDITION.AIRBORNE
+      sta lifeform.condition
+
+      lda #LIFEFORM.JUMP.AGE
+      sta lifeform.action.age
+      rep #$31
+
+      ;double jump height if super berzerk
+      lda #LIFEFORM.JUMP.IMPULSE
+      ldx lifeform.mode
+      beq +++
+        asl a
+
++++      
+      sta dimension.speed.y
+
+      lda #LIFEFORM.JUMP.ACCEL
+      ldx lifeform.mode
+      beq +++
+        asl a
+
++++ 
+      sta dimension.acceleration.y  
+
+      ;overcome ground traction
+      dec dimension.position.y+1      
+
+++    
+    pei (lifeform.power)
+    pei (iterator.self)
+    pei (iterator.self + 2)
+    SCRIPT_CALL lifeform.library.oncommand.MTD lifeform.grabbed.object LIFEFORM.COMMAND.THROW
+    plx
+    plx
+    plx
+    pla
+    bcc +
+      ldx.w #AUDIO.EFFECT.THROW
+      lda iterator.self
+      and.w #$ff
+      cmp.w #lifeform.player.CLS.PTR
+      beq ++
+        inx
+
+++
+      txa
+      jsl extern.dimension.playSoundEffect
+
+      lda.w #VOID
+      sta lifeform.grabbed.object
+
++
+  rtl
+
+_getThrowDirection:
+  AX16
+  lda lifeform.actions
+  and.w #(LIFEFORM.ABILITIES.MOVE.RIGHT | LIFEFORM.ABILITIES.MOVE.LEFT | LIFEFORM.ABILITIES.MOVE.UP | LIFEFORM.ABILITIES.MOVE.DOWN)
+  beq +
+    ;get direct press
+    SCRIPT_JSR core.math.direction2angle
+    rts
+
++    
+  ;get last direction
+  lda dimension.direction
+  and.w #$1
+  tax
+  lda.l lifeform.throw.direction.lut,x
+  and.w #$ff
+  rts
+
+
+extern.lifeform.setEvaluateWait:
+  AX16
+  sep #$20
+  lda.b #10
+  sta lifeform.evaluate.wait
+  rep #$31
+  rtl
+
+
+extern.lifeform.collisionDoubleDiameter:
+  pei (dimension.collision.diameter)
+  pha
+  lda dimension.collision.diameter
+  asl a
+  asl a
+  sta dimension.collision.diameter
+  pla
+  SCRIPT_JSR collision.library.fromDiameter.toDiameter.byProperties
+  pla
+  sta dimension.collision.diameter
+  rtl
+
+lifeform.library.collisionQuadrupleDiameter.noReset:
+  pei (dimension.collision.diameter)
+  pha
+  lda dimension.collision.diameter
+  asl a
+  asl a
+  asl a
+  sta dimension.collision.diameter
+  pla
+  SCRIPT_JSR collision.library.fromDiameter.toDiameter.noReset
+  pla
+  sta dimension.collision.diameter
+  rts
+
+lifeform.library.collisionDoubleDiameter.noReset:
+  pei (dimension.collision.diameter)
+  pha
+  lda dimension.collision.diameter
+  asl a
+  sta dimension.collision.diameter
+  pla
+  SCRIPT_JSR collision.library.fromDiameter.toDiameter.noReset
+  pla
+  sta dimension.collision.diameter
+  rts
+
+
+;dimension.library.getBasePosition:
+extern.lifeform.getBasePosition:
+  AX16
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  tax
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  tay
+  rtl
+
+
+/**
+*
+* @param a<int, 16bit>  target properties
+*
+* @return c <bool>  true if target has been found
+*/
+extern.lifeform.seekTarget:
+  AX16
+  pha
+
+  ldx #lifeform.target.object
+  SCRIPT_JSR core.object.exists
+  bcc +
+    lda.l OopStack.dp,x
+    tay
+
+    ;does target match requested properties?
+    lda.w iterator.properties,y
+    and 1,s
+    cmp 1,s
+    beq +++
+
++
+    ;no target selected, seek new one
+    SCRIPT_JSR iterator.library.reset
+    lda 1,s
+    SCRIPT_JSR iterator.library.others
+
+    bcc ++ ;do nothing if no target present at all
+
+    ;make found object new target
+    lda iterator.target
+    sta lifeform.target.object
+    lda iterator.target+2
+    sta lifeform.target.object+2
+
++++
+  pla
+  sec
+  rtl
+
+++
+  pla
+  clc
+  rtl
+
+
+lifeform.library.move:
+  AX16
+  rts
+
+
+_move.lut:
+  .dw _stop
+  .dw _right
+  .dw _left
+  .dw _stop
+  .dw _down
+  .dw _downRight
+  .dw _downLeft
+  .dw _stop
+  .dw _up
+  .dw _upRight
+  .dw _upLeft
+  .dw _stop
+  .dw _stop
+  .dw _stop
+  .dw _stop
+  .dw _stop
+
+_stop:
+  sec
+  rts
+
+
+_up:
+  lda #LIFEFORM.ABILITIES.MOVE.UP
+  ora lifeform.controller.current.actions
+  sta lifeform.controller.current.actions
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  sec
+  sbc 3,s
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  tax
+  bra _move.postamble
+
+_left:
+  lda #LIFEFORM.ABILITIES.MOVE.LEFT
+  ora lifeform.controller.current.actions
+  sta lifeform.controller.current.actions
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  sec
+  sbc 3,s
+  tax
+  bra _move.postamble
+
+_move.postamble:
+  AX16
+  phy
+  phx
+  jsl extern.level.getCollisionTile
+  jsr lifeform.library.tileIsNotHurting
+  plx
+  plx  
+  rts
+
+_getRight:
+  AX16
+
+_right:
+  lda #LIFEFORM.ABILITIES.MOVE.RIGHT
+  ora lifeform.controller.current.actions
+  sta lifeform.controller.current.actions
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  clc
+  adc 3,s
+  tax
+  bra _move.postamble
+
+_down:
+  lda #LIFEFORM.ABILITIES.MOVE.DOWN
+  ora lifeform.controller.current.actions
+  sta lifeform.controller.current.actions
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  clc
+  adc 3,s
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  tax
+  bra _move.postamble
+
+
+_upRight:
+  lda #(LIFEFORM.ABILITIES.MOVE.UP | LIFEFORM.ABILITIES.MOVE.RIGHT)
+  ora lifeform.controller.current.actions
+  sta lifeform.controller.current.actions
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  sec
+  sbc 3,s
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  tax
+  jsr _move.postamble  
+  bcc +
+
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  clc
+  adc 3,s
+  tax   
+  jsr _move.postamble  
+  bcc +
+
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  sec
+  sbc 3,s
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  clc
+  adc 3,s
+  tax
+  jsr _move.postamble  
+
++
+  rts
+  
+
+
+_downRight:
+  lda #(LIFEFORM.ABILITIES.MOVE.DOWN | LIFEFORM.ABILITIES.MOVE.RIGHT)
+  ora lifeform.controller.current.actions
+  sta lifeform.controller.current.actions
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  clc
+  adc 3,s
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  tax
+  jsr _move.postamble  
+  bcc +
+
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  clc
+  adc 3,s
+  tax   
+  jsr _move.postamble  
+  bcc +
+
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  clc
+  adc 3,s
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  clc
+  adc 3,s
+  tax
+  jsr _move.postamble  
+
++
+  rts
+
+
+_downLeft:
+  lda #(LIFEFORM.ABILITIES.MOVE.DOWN | LIFEFORM.ABILITIES.MOVE.LEFT)
+  ora lifeform.controller.current.actions
+  sta lifeform.controller.current.actions
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  clc
+  adc 3,s
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  tax
+  jsr _move.postamble  
+  bcc +
+
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+
+  sec
+  sbc 3,s
+  tax   
+  jsr _move.postamble  
+  bcc +
+
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  clc
+  adc 3,s
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  sec
+  sbc 3,s
+  tax
+  jsr _move.postamble  
+
++
+  rts
+
+
+
+_upLeft:
+  lda #(LIFEFORM.ABILITIES.MOVE.UP | LIFEFORM.ABILITIES.MOVE.LEFT)
+  ora lifeform.controller.current.actions
+  sta lifeform.controller.current.actions
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  sec
+  sbc 3,s
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  tax
+  jsr _move.postamble  
+  bcc +
+
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  sec
+  sbc 3,s
+  tax 
+  jsr _move.postamble  
+  bcc +
+
+  lda dimension.position.y+1
+  clc
+  adc dimension.collision.basepoint.y
+  sec
+  sbc 3,s
+  tay
+  lda dimension.position.x+1
+  clc
+  adc dimension.collision.basepoint.x
+  sec
+  sbc 3,s
+  tax
+  jsr _move.postamble  
+
++
+  rts
+
+lifeform.library.tileIsNotHurting:
+  sec
+  rts
+
+
+extern.lifeform.getCameraData:
+  AX16
+  SCRIPT_JSR interface.dimension.getCollisionBasepoint
+
+  lda dimension.direction
+  and.w #$7
+  pha
+
+  phx
+  ldx.w #SCREEN.BOUNDARY.GROUNDED
+  lda lifeform.condition
+  and.w #$ff
+  cmp.w #LIFEFORM.CONDITION.GROUNDED
+  beq +
+    ldx.w #SCREEN.BOUNDARY.AIRBORNE
+
++
+  txa
+  plx
+  asl a
+  asl a
+  asl a
+  asl a
+  ora 1,s
+  sta 1,s
+  pla
+  sec
+  rtl
+
+extern.lifeform.sprite:
+  jsr lifeform.library.sprite
+  rtl
+
+;a: animation
+;x/y:direction-relative position
+lifeform.library.sprite:
+  AX16
+  phy
+  phx
+
+  tax
+  lda animation.flags.static
+  ora.w #ANIMATION.FLAGS.CENTER_ON_INIT
+  pha
+
+  pea 3
+  phx
+  SCRIPT_JSR interface.dimension.getCenterPosition
+
+  tya
+  clc
+  adc 9,s
+  pha
+
+  lda dimension.direction
+  and.w #$ff
+  cmp.w #SPRITE.DIRECTION.LEFT
+  beq +
+    txa
+    clc
+    adc 9,s
+    bra ++
+
++  
+    txa
+    sec
+    sbc 9,s
+
+++
+  pha
+  SCRIPT_NEW_TRY sprite.once.CLS.PTR VOID
+  pla
+  pla
+  pla
+  pla
+  pla
+  plx
+  ply
+  rts
+
+extern.lifeform.sprite.rise:
+  AX16
+  phy
+  phx
+
+  pea 0
+  pea 1
+  pea MATH.270_DEG
+  tax
+  lda animation.flags.static
+  ora.w #ANIMATION.FLAGS.CENTER_ON_INIT
+  pha
+
+  pea 3
+  phx
+  SCRIPT_JSR interface.dimension.getCenterPosition
+  phy
+  phx  
+  SCRIPT_NEW_TRY sprite.directed.CLS.PTR VOID
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+
+  plx
+  ply
+  rtl
+
+extern.lifeform.checkBerzerkGet:
+  AX16
+  lda animation.timer
+  inc a
+  and.w #$f
+  bne +
+    ;only collect if we're not ethereal
+    lda iterator.properties
+    bit.w #OBJECT.PROPERTIES.isCollidable
+    beq +
+      lda.w #sprite.berzerk.return.CLS.PTR
+      pei (dimension.collision.diameter)
+      asl dimension.collision.diameter
+      asl dimension.collision.diameter
+      SCRIPT_JSR collision.library.fromDiameter.toDiameter.byId
+      pla
+      sta dimension.collision.diameter
+      bcc +
+          SCRIPT_CALL sprite.berzerk.return.getValue.MTD iterator.target
+          clc
+          adc lifeform.berzerk.counter
+          cmp.w #LIFEFORM.BERZERK.MAX
+          bcc ++
+            lda.w #LIFEFORM.BERZERK.MAX
+++
+        sta lifeform.berzerk.counter
+        SCRIPT_CALL sprite.berzerk.return.kill.MTD iterator.target
+        sec
+        rtl
+
++ 
+  clc
+  rtl
+
+extern.lifeform.evalOffscreen:
+  AX16
+  lda lifeform.controller.current.actions
+  jsr lifeform.library.movement.evaluate
+
+  jsl extern.lifeform.animate
+
+  jsl extern.lifeform.checkOffscreenKill
+  rtl
+
+extern.lifeform.eval:
+  AX16
+  lda lifeform.controller.current.actions
+  jsr lifeform.library.movement.evaluate
+
+  jsl extern.lifeform.animate
+  rtl
+
+.ends

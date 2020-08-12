@@ -1,0 +1,1089 @@
+/**
+* OAM sprite animation file includes, lookup tables and custom definitions
+*
+*/
+
+.Section "SpriteAnimationLUT" superfree
+SpriteAnimationLUT:
+  .dw 0 ;dummy entry, first one must be clear
+  .db 0
+  PTRLONG SpriteAnimationLUT SPRITE.cursor
+  PTRLONG SpriteAnimationLUT SPRITE.indicator.performance
+  PTRLONG SpriteAnimationLUT SPRITE.exit
+
+  PTRLONG SpriteAnimationLUT SPRITE.explosion.dust
+  PTRLONG SpriteAnimationLUT SPRITE.explosion.round
+  PTRLONG SpriteAnimationLUT SPRITE.slash1
+  PTRLONG SpriteAnimationLUT SPRITE.smoke
+  PTRLONG SpriteAnimationLUT SPRITE.smash
+  PTRLONG SpriteAnimationLUT SPRITE.dust
+  PTRLONG SpriteAnimationLUT SPRITE.berzerk.return
+  PTRLONG SpriteAnimationLUT SPRITE.combo_ready
+
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.philomena.shocked
+  ;PTRLONG SpriteAnimationLUT SPRITE.portrait.philomena.sad
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.philomena.talk
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.philomena.pressure
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.philomena.mad
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.philomena.ghost
+  PTRLONG SpriteAnimationLUT SPRITE.ghost.fausto
+  PTRLONG SpriteAnimationLUT SPRITE.ghost.orkan
+  PTRLONG SpriteAnimationLUT SPRITE.ghost.philomena
+
+  ;PTRLONG SpriteAnimationLUT SPRITE.portrait.orkan.shocked
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.orkan.talk
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.orkan.pressure
+
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.fausto.sad
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.fausto.talk
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.fausto.pressure
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.fausto.bliss
+
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.boss.twitch
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.boss.talk
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.boss.shocked
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.boss.rage
+  PTRLONG SpriteAnimationLUT SPRITE.portrait.boss.bliss
+
+  PTRLONG SpriteAnimationLUT SPRITE.boss.dummy
+  PTRLONG SpriteAnimationLUT SPRITE.boss.idle
+  PTRLONG SpriteAnimationLUT SPRITE.boss.duck
+  PTRLONG SpriteAnimationLUT SPRITE.boss.run
+  PTRLONG SpriteAnimationLUT SPRITE.boss.duck
+  PTRLONG SpriteAnimationLUT SPRITE.boss.jump
+  PTRLONG SpriteAnimationLUT SPRITE.boss.flip
+  PTRLONG SpriteAnimationLUT SPRITE.boss.jumpkick
+  PTRLONG SpriteAnimationLUT SPRITE.boss.fall
+  PTRLONG SpriteAnimationLUT SPRITE.boss.wallhug
+  PTRLONG SpriteAnimationLUT SPRITE.boss.dash
+  PTRLONG SpriteAnimationLUT SPRITE.boss.slide
+  PTRLONG SpriteAnimationLUT SPRITE.boss.climb
+  PTRLONG SpriteAnimationLUT SPRITE.boss.grab
+  PTRLONG SpriteAnimationLUT SPRITE.boss.stash
+  PTRLONG SpriteAnimationLUT SPRITE.boss.throw
+  PTRLONG SpriteAnimationLUT SPRITE.boss.grabbed
+  PTRLONG SpriteAnimationLUT SPRITE.boss.hurt
+  PTRLONG SpriteAnimationLUT SPRITE.boss.die
+  PTRLONG SpriteAnimationLUT SPRITE.boss.die
+  PTRLONG SpriteAnimationLUT SPRITE.boss.uppercut
+  PTRLONG SpriteAnimationLUT SPRITE.boss.punch1
+  PTRLONG SpriteAnimationLUT SPRITE.boss.punch2
+  PTRLONG SpriteAnimationLUT SPRITE.boss.punch3
+  PTRLONG SpriteAnimationLUT SPRITE.boss.punch1
+  PTRLONG SpriteAnimationLUT SPRITE.boss.punch2
+  PTRLONG SpriteAnimationLUT SPRITE.boss.punch3
+
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.dummy
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.idle
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.idle
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.run
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.idle
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.jump
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.jump
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.attack
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.fall
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.idle
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.run
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.slide
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.climb
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.idle
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.idle
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.attack
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.idle
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.hurt
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.hurt
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.hurt
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.uppercut
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.attack
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.attack
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.attack
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.attack
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.attack
+  PTRLONG SpriteAnimationLUT SPRITE.disk_kun.attack
+
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.dummy
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.run
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.jump
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.jump
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.attack
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.fall
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.run
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.slide
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.climb
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.attack
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.hurt
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.hurt
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.hurt
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.uppercut
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.attack
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.attack
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.attack
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.attack
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.attack
+  PTRLONG SpriteAnimationLUT SPRITE.parabo.attack
+
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.dummy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.roar
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.jump
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.jump
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.jump
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.jump
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.idle
+
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+  PTRLONG SpriteAnimationLUT SPRITE.mg_rex.sleepy
+
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  PTRLONG SpriteAnimationLUT SPRITE.the_end
+  
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+  PTRLONG SpriteAnimationLUT SPRITE.computer.idle
+
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cone.idle
+
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+  PTRLONG SpriteAnimationLUT SPRITE.flower
+
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+  PTRLONG SpriteAnimationLUT SPRITE.couch
+
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+  PTRLONG SpriteAnimationLUT SPRITE.jukebox
+
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+  PTRLONG SpriteAnimationLUT SPRITE.piano
+
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+  PTRLONG SpriteAnimationLUT SPRITE.satebo.idle
+    
+
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+  PTRLONG SpriteAnimationLUT SPRITE.bluecollar.run
+
+  PTRLONG SpriteAnimationLUT SPRITE.bower.dummy
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.run
+  PTRLONG SpriteAnimationLUT SPRITE.bower.run
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+  PTRLONG SpriteAnimationLUT SPRITE.bower.idle
+
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+  PTRLONG SpriteAnimationLUT SPRITE.toro.idle
+
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+  PTRLONG SpriteAnimationLUT SPRITE.spiked_mine
+
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle
+  PTRLONG SpriteAnimationLUT SPRITE.sackboy.idle  
+
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.dummy
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+  PTRLONG SpriteAnimationLUT SPRITE.shielder.idle
+
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.dummy
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa.idle
+
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.dummy
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+  PTRLONG SpriteAnimationLUT SPRITE.parappa_mad.idle
+
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+  PTRLONG SpriteAnimationLUT SPRITE.fireball
+
+  PTRLONG SpriteAnimationLUT SPRITE.slider.dummy
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.jump
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.jump
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  PTRLONG SpriteAnimationLUT SPRITE.slider.idle
+  
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.dummy
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.idle
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.shoot
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.shoot
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.shoot
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.shoot
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.shoot
+  PTRLONG SpriteAnimationLUT SPRITE.cannon.shoot
+
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+  PTRLONG SpriteAnimationLUT SPRITE.block
+
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dummy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.run
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.run
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.idle
+
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.orkan.dizzy
+  
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dummy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.run
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.run
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.idle
+
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.philomena.dizzy
+
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dummy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.run
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.run
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.idle
+
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+  PTRLONG SpriteAnimationLUT SPRITE.fausto.dizzy
+
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+  PTRLONG SpriteAnimationLUT SPRITE.bomb
+
+.ends 
+
+
+.base LOROM
+.bank BANK.PROGRAM
+
+    SPRITE_ANIMATION cursor
+    SPRITE_ANIMATION indicator.performance static
+    SPRITE_ANIMATION exit static
+    SPRITE_ANIMATION bluecollar run static
+    SPRITE_DUMMY cannon dummy
+    SPRITE_ANIMATION cannon idle eighth
+    SPRITE_ANIMATION cannon shoot quarter
+
+    SPRITE_DUMMY bower dummy
+    SPRITE_ANIMATION bower idle quarter
+    SPRITE_ANIMATION bower run quarter
+    SPRITE_ANIMATION computer idle static
+    SPRITE_ANIMATION cone idle static
+
+    SPRITE_DUMMY boss dummy
+    SPRITE_ANIMATION boss idle eighth
+    SPRITE_ANIMATION boss duck quarter
+    SPRITE_ANIMATION boss run quarter
+
+    ;SPRITE_ANIMATION boss crouch quarter
+    SPRITE_ANIMATION boss jump quarter
+    SPRITE_ANIMATION boss flip quarter
+    SPRITE_ANIMATION boss jumpkick quarter
+    SPRITE_ANIMATION boss fall quarter
+    SPRITE_ANIMATION boss dash quarter
+    SPRITE_ANIMATION boss slide quarter
+    SPRITE_ANIMATION boss wallhug quarter
+    SPRITE_ANIMATION boss climb quarter
+    SPRITE_ANIMATION boss grab quarter
+    SPRITE_ANIMATION boss stash quarter
+    SPRITE_ANIMATION boss throw quarter
+    SPRITE_ANIMATION boss grabbed eighth
+    SPRITE_ANIMATION boss hurt eighth
+    SPRITE_ANIMATION boss die eighth
+    SPRITE_ANIMATION boss uppercut quarter
+    SPRITE_ANIMATION boss punch1 half
+    SPRITE_ANIMATION boss punch2 half
+    SPRITE_ANIMATION boss punch3 quarter
+
+    SPRITE_ANIMATION explosion.dust static
+    SPRITE_ANIMATION explosion.round static
+    SPRITE_ANIMATION slash1 half
+
+    SPRITE_ANIMATION smoke static  
+    SPRITE_ANIMATION smash static  
+    SPRITE_ANIMATION dust static  
+    SPRITE_ANIMATION berzerk.return static  
+    SPRITE_ANIMATION block  
+
+    SPRITE_DUMMY shielder dummy
+    SPRITE_ANIMATION shielder idle quarter
+    SPRITE_DUMMY slider dummy
+    SPRITE_ANIMATION slider idle quarter
+    SPRITE_ANIMATION slider jump quarter
+
+    SPRITE_DUMMY philomena dummy
+    SPRITE_ANIMATION philomena idle quarter
+    SPRITE_ANIMATION philomena run quarter
+    SPRITE_ANIMATION philomena dizzy eighth
+    SPRITE_DUMMY fausto dummy
+    SPRITE_ANIMATION fausto idle quarter
+    SPRITE_ANIMATION fausto run quarter
+    SPRITE_ANIMATION fausto dizzy eighth
+    SPRITE_DUMMY orkan dummy
+    SPRITE_ANIMATION orkan idle quarter
+    SPRITE_ANIMATION orkan run quarter
+    SPRITE_ANIMATION orkan dizzy eighth
+
+    SPRITE_ANIMATION spiked_mine static
+    SPRITE_ANIMATION fireball static
+
+    SPRITE_ANIMATION portrait.philomena.shocked quarter
+    ;SPRITE_ANIMATION portrait.philomena.sad quarter
+    SPRITE_ANIMATION portrait.philomena.talk quarter
+    SPRITE_ANIMATION portrait.philomena.pressure quarter
+    SPRITE_ANIMATION portrait.philomena.mad quarter
+    SPRITE_ANIMATION portrait.orkan.talk quarter
+    ;SPRITE_ANIMATION portrait.orkan.shocked quarter
+    SPRITE_ANIMATION portrait.orkan.pressure quarter
+    SPRITE_ANIMATION portrait.fausto.talk quarter
+    SPRITE_ANIMATION portrait.fausto.sad quarter
+    SPRITE_ANIMATION portrait.fausto.pressure quarter
+
+    SPRITE_ANIMATION portrait.boss.twitch quarter
+    SPRITE_ANIMATION portrait.boss.talk quarter
+    SPRITE_ANIMATION portrait.boss.shocked quarter
+    SPRITE_ANIMATION portrait.boss.rage quarter
+    SPRITE_ANIMATION portrait.boss.bliss quarter
+
+    SPRITE_ANIMATION combo_ready static
+    SPRITE_ANIMATION flower static
+    SPRITE_ANIMATION couch
+    SPRITE_ANIMATION jukebox
+    SPRITE_ANIMATION piano
+
+    SPRITE_DUMMY mg_rex dummy
+    SPRITE_ANIMATION mg_rex idle eighth
+    SPRITE_ANIMATION mg_rex jump eighth
+    SPRITE_ANIMATION mg_rex roar eighth
+    SPRITE_ANIMATION mg_rex sleepy eighth
+    SPRITE_ANIMATION bomb quarter
+    SPRITE_ANIMATION portrait.philomena.ghost static
+    SPRITE_ANIMATION portrait.fausto.bliss quarter
+    SPRITE_ANIMATION ghost.fausto
+    SPRITE_ANIMATION ghost.orkan
+    SPRITE_ANIMATION ghost.philomena
+    SPRITE_ANIMATION the_end
+
+    SPRITE_DUMMY disk_kun dummy
+    SPRITE_ANIMATION disk_kun idle eighth
+    SPRITE_ANIMATION disk_kun run quarter
+    SPRITE_ANIMATION disk_kun jump quarter
+    SPRITE_ANIMATION disk_kun hurt quarter
+    SPRITE_ANIMATION disk_kun fall quarter
+    SPRITE_ANIMATION disk_kun attack quarter
+    SPRITE_ANIMATION disk_kun climb quarter
+    SPRITE_ANIMATION disk_kun slide quarter
+    SPRITE_ANIMATION disk_kun uppercut quarter
+
+    SPRITE_DUMMY parabo dummy
+    SPRITE_ANIMATION parabo idle eighth
+    SPRITE_ANIMATION parabo run quarter
+    SPRITE_ANIMATION parabo jump quarter
+    SPRITE_ANIMATION parabo hurt quarter
+    SPRITE_ANIMATION parabo fall quarter
+    SPRITE_ANIMATION parabo attack quarter
+    SPRITE_ANIMATION parabo climb quarter
+    SPRITE_ANIMATION parabo slide quarter
+    SPRITE_ANIMATION parabo uppercut quarter
+
+    SPRITE_DUMMY parappa dummy
+    SPRITE_ANIMATION parappa idle eighth
+
+    SPRITE_DUMMY parappa_mad dummy
+    SPRITE_ANIMATION parappa_mad idle eighth
+
+    SPRITE_ANIMATION toro.idle static
+    SPRITE_ANIMATION sackboy.idle static
+    SPRITE_ANIMATION satebo.idle eighth

@@ -1,0 +1,598 @@
+/**
+* Ending cutscene
+*
+*/
+
+  SCRIPT ending
+
+  .redef obj.the_end hashPtr.1
+  .redef obj.fade hashPtr.3
+  .redef obj.hdma.window hashPtr.4
+  .redef obj.vwf hashPtr.5
+  .redef obj.parser hashPtr.6
+
+  .redef obj.hud this._tmp+0
+  .redef obj.player this._tmp+4
+  .redef obj.scrollLayer this._tmp+8
+  .redef obj.fixedColor this._tmp+12
+
+  .redef building.y script.args+0
+  .redef explosion.x script.args+2
+  .redef explosion.y script.args+4
+  .redef timer script.args+6
+
+    SET_CUTSCENE_MANDATORY
+
+    CUTSCENE_ACQUIRE_OBJECT lifeform.player.CLS.PTR obj.player
+
+    stz building.y
+
+    lda.w #DIALOGUE.STATE.GAME_BEATEN
+    sta.w GLOBAL.dialogueState
+
+    ;debug. create piano, trigger easter egg
+    ;SCRIPT_NEW lifeform.static.CLS.PTR VOID 792 1680 0 0 FALSE SPRITE.piano.PTR
+
+    ;try to acquire level bg layer 
+    SCRIPT_JSR iterator.library.reset
+
+-
+    lda.w #background.level.layer.CLS.PTR
+    SCRIPT_JSR iterator.library.each.byId
+    bcs ++
+        SCRIPT_TRIGGER_ERROR E_Todo
+
+++
+    SCRIPT_CALL background.level.layer.getBgId.MTD iterator.target
+    cmp.w #BG.LAYER.1
+    bne -
+
+    lda iterator.target
+    sta obj.scrollLayer
+    lda iterator.target+2
+    sta obj.scrollLayer+2
+
+    CUTSCENE_WAIT_LONG
+
+    .redef POS_X 90*8
+    .redef POS_Y 218*8
+    EXPLOSION_BIG POS_X POS_Y
+    LOOP 10
+    LOOP
+
+    .redef POS_X 104*8
+    EXPLOSION_BIG POS_X POS_Y
+    LOOP 10
+    LOOP
+
+    .redef POS_X 116*8
+    EXPLOSION_BIG POS_X POS_Y
+    LOOP 10
+    LOOP
+
+    .redef POS_X 128*8
+    EXPLOSION_BIG POS_X POS_Y
+    LOOP 10
+    LOOP
+
+    .redef POS_X 138*8
+    EXPLOSION_BIG POS_X POS_Y
+    LOOP 10
+    LOOP
+
+    .redef POS_X 150*8
+    EXPLOSION_BIG POS_X POS_Y
+    LOOP 10
+    LOOP
+
+    .redef POS_X 163*8
+    EXPLOSION_BIG POS_X POS_Y
+    LOOP 10
+    LOOP
+
+    CUTSCENE_WAIT_LONG
+-
+    inc timer
+    inc building.y
+
+    ;set position of crumbling building
+    lda building.y
+    cmp.w #(200-16)*8
+    bcs _crumbleDone
+    
+    and.w #$800-1
+    pha
+    pea 0
+    SCRIPT_CALL background.level.layer.setPosition.MTD obj.scrollLayer
+    pla
+    pla
+
+    jmp _checkInstanciation
+
+
+
+_crumbleDone:
+    CUTSCENE_WAIT_SHORT
+
+    CUTSCENE_KILL_ENEMIES
+
+    .redef POS_X 90*8
+    .redef POS_Y 218*8
+    EXPLOSION_BIG POS_X POS_Y
+    LOOP 5
+    LOOP
+
+    .redef POS_X 104*8
+    EXPLOSION_BIG POS_X POS_Y
+    LOOP 5
+    LOOP
+
+    .redef POS_X 116*8
+    EXPLOSION_BIG POS_X POS_Y
+    LOOP 5
+    LOOP
+
+    .redef POS_X 128*8
+    EXPLOSION_BIG POS_X POS_Y
+    LOOP 5
+    LOOP
+
+    .redef POS_X 138*8
+    EXPLOSION_BIG POS_X POS_Y
+    LOOP 5
+    LOOP
+
+    .redef POS_X 150*8
+    EXPLOSION_BIG POS_X POS_Y
+    LOOP 5
+    LOOP
+
+    .redef POS_X 163*8
+    EXPLOSION_BIG POS_X POS_Y
+    
+
+    CUTSCENE_WAIT_SHORT
+
+    AUDIO_FADE AUDIO.VOLUME.MUTE
+
+    WAIT_AUDIO_FADE_COMPLETE
+
+    lda.w #Song.ending.PTR
+    SCRIPT_JSR core.audio.playSong
+
+    HUD_DISABLE obj.hud
+
+    SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.propDamage text.dialogue.happyNow FALSE
+    WAIT_FOR obj.script.slave
+
+
+    /*piano easter egg, display special text message if player carried piano all the way to ending*/
+    SCRIPT_JSR iterator.library.reset
+-    
+    lda.w #lifeform.static.CLS.PTR
+    SCRIPT_JSR iterator.library.each.byId
+    bcc +
+        SCRIPT_CALL lifeform.static.getAnimationBase.MTD iterator.target
+        cmp.w #SPRITE.piano.PTR
+        bne -
+            SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.gotPiano text.dialogue.cryJustALittle FALSE
+            WAIT_FOR obj.script.slave
+
+
++
+
+    CUTSCENE_WAIT
+
+    SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.overreacted FALSE
+    WAIT_FOR obj.script.slave
+
+    CUTSCENE_WAIT
+
+    SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.notToWorry text.dialogue.newCompany text.dialogue.leadershipSkills FALSE
+    WAIT_FOR obj.script.slave
+
+    CUTSCENE_WAIT
+
+    SCRIPT_NEW Script.CLS.PTR obj.script.slave textbox text.dialogue.teamwork FALSE
+    WAIT_FOR obj.script.slave
+
+    HUD_ENABLE obj.hud
+
+    pea SPRITE.the_end.PTR
+    pea 0
+    pea 0
+    pea 0
+    pea 197*8
+    pea 128*8
+    SCRIPT_NEW lifeform.static.CLS.PTR obj.the_end
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+
+    WAIT_FOR obj.the_end
+
+    SCRIPT_NEW fixedColor.CLS.PTR obj.fixedColor
+    lda.w #FIXED_COLOR.WHITE
+    SCRIPT_CALL fixedColor.set.MTD obj.fixedColor
+
+    lda.w #FIXED_COLOR.BLACK
+    SCRIPT_CALL fixedColor.fadeTo.MTD obj.fixedColor
+
+    sep #$20
+
+    ;setup color window add to mainscreen
+    lda #(WOBJSEL_COL_W1_ENABLE | WOBJSEL_COL_W2_ENABLE)
+    sta.w windowObjSel
+
+    lda #WOBJLOG_COL_OR
+    sta.w windowObjLogic
+
+    lda #(CGWSEL_CLIP_COL_NEVER | CGWSEL_NO_COL_MATH_NEVER)
+    sta.w colorAdditionSelect
+
+    lda #(CGADSUB_BAC_ENABLE | CGADSUB_OBJ_ENABLE | CGADSUB_BG3_ENABLE | CGADSUB_BG2_ENABLE | CGADSUB_BG1_ENABLE)
+    sta.w CgadsubConfig
+    stz.w SubScreen
+    rep #$31    
+
+    HUD_DISABLE obj.hud
+
+  ;pause 
+  SCRIPT_JSR iterator.library.reset
+-
+  lda.w #OBJECT.PROPERTIES.isLifeform
+  jsl extern.iterator.each.byProperties
+  bcc +
+    ldx #iterator.target
+    SCRIPT_JSR core.object.pause
+    bra -
+        
++
+
+  SCRIPT_NEW Palette.fade.CLS.PTR obj.fade $10 $70 3
+
+  SCRIPT_CALL Palette.fade.set.MTD obj.fade PALETTE.greyscale.PTR
+
+  CUTSCENE_WAIT_LONG
+
+  ;do credits here:
+    SCRIPT_NEW_TRY background.textlayer.vwf.CLS.PTR obj.vwf $2000 BG.LAYER.2 1 1
+
+    pei (obj.vwf)
+    pei (obj.vwf+2)
+    SCRIPT_NEW vwf.parser.CLS.PTR obj.parser
+    pla
+    pla
+
+
+    SAVE
+    SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+    bcs +
+        rts
+
++
+
+    pea VOID
+    pea 8
+    pea 24
+    pea 80
+    pea FONT.big_2bpp.PTR
+    pea text.dialogue.creditsMusic
+    SCRIPT_CALL vwf.parser.print.MTD obj.parser
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+
+    ;wait for print complete
+    SAVE
+    SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+    bcs +
+        rts
+
++
+
+    CUTSCENE_WAIT
+
+    pea VOID
+    pea 40
+    pea 64
+    pea 176
+    pea FONT.big_2bpp.PTR
+    pea text.dialogue.creditsProgram
+    SCRIPT_CALL vwf.parser.print.MTD obj.parser
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+
+    ;wait for print complete
+    SAVE
+    SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+    bcs +
+        rts
+
++
+
+    CUTSCENE_WAIT
+
+    pea VOID
+    pea 80
+    pea 104
+    pea 176
+    pea FONT.big_2bpp.PTR
+    pea text.dialogue.mapDesign
+    SCRIPT_CALL vwf.parser.print.MTD obj.parser
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+
+    ;wait for print complete
+    SAVE
+    SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+    bcs +
+        rts
+
++
+
+    CUTSCENE_WAIT
+
+    pea VOID
+    pea 136
+    pea 32
+    pea 80
+    pea FONT.big_2bpp.PTR
+    pea text.dialogue.creditsFont
+    SCRIPT_CALL vwf.parser.print.MTD obj.parser
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+
+    ;wait for print complete
+    SAVE
+    SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+    bcs +
+        rts
+
++
+
+    CUTSCENE_WAIT
+
+    pea VOID
+    pea 136
+    pea 132
+    pea 120
+    pea FONT.big_2bpp.PTR
+    pea text.dialogue.creditsSpecial
+    SCRIPT_CALL vwf.parser.print.MTD obj.parser
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+
+    ;wait for print complete
+    SAVE
+    SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+    bcs +
+        rts
+
++
+
+    CUTSCENE_WAIT_LONG
+    CUTSCENE_WAIT_LONG
+    CUTSCENE_WAIT_LONG
+    CUTSCENE_WAIT_LONG
+
+    SAVE
+
+    ;ranking
+    SCRIPT_CALL background.textlayer.vwf.kill.MTD obj.vwf
+    SCRIPT_CALL vwf.parser.kill.MTD obj.parser
+
+    CUTSCENE_WAIT
+
+    SCRIPT_NEW_TRY background.textlayer.vwf.CLS.PTR obj.vwf $2000 BG.LAYER.2 1 1
+
+    pei (obj.vwf)
+    pei (obj.vwf+2)
+    SCRIPT_NEW vwf.parser.CLS.PTR obj.parser
+    pla
+    pla
+
+
+    SAVE
+    SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+    bcs +
+        rts
+
++
+
+    pea VOID
+    pea 24
+    pea 40
+    pea 200
+    pea FONT.big_2bpp.PTR
+    pea text.dialogue.rankingPreface
+    SCRIPT_CALL vwf.parser.print.MTD obj.parser
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+
+    ;wait for print complete
+    SAVE
+    SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+    bcs +
+        rts
+
++
+    CUTSCENE_WAIT
+
+    ldx.w #text.dialogue.rankingC
+
+    lda.w GLOBAL.gotHitCount
+    cmp.w #48
+    bcs +
+    ldx.w #text.dialogue.rankingB
+
+    cmp.w #24
+    bcs +
+    ldx.w #text.dialogue.rankingA
+
+    cmp.w #10
+    bcs +
+    ldx.w #text.dialogue.rankingS
+
+    cmp.w #0
+    bne +
+    ldx.w #text.dialogue.rankingPerfect
+
++
+
+    pea VOID
+    pea 48
+    pea 96
+    pea 80
+    pea FONT.big_2bpp.PTR
+    phx
+    SCRIPT_CALL vwf.parser.print.MTD obj.parser
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+
+asdfasdfa:    
+    lda.w (GLOBAL.screen.position.y&$ffff)+1
+    clc
+    adc.w #56
+    pha
+    lda.w (GLOBAL.screen.position.x&$ffff)+1
+    clc
+    adc.w #116
+    pha
+    jsr _explosion_big
+    pla
+    pla
+
+    ;wait for print complete
+    SAVE
+    SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+    bcs +
+        rts
+
++
+    CUTSCENE_WAIT
+
+    SAVE
+    ldx.w #INPUT.DEVICE.ID.0
+    SCRIPT_JSR core.input.get.trigger
+    bit.w #JOY_BUTTON_START
+    bne +
+        rts
+
++    
+  ;return to title
+    SCRIPT_NEW hdma.windowMaskAnimation.CLS.PTR obj.hdma.window HDMA.fade_out.PTR
+    SCRIPT_CALL hdma.windowMaskAnimation.setCallback.MTD obj.hdma.window hdma.blackScreen.CLB
+    WAIT_FOR obj.hdma.window
+
+    SCRIPT_JSR core.audio.stopSong
+
+    SCRIPT_CALL background.textlayer.vwf.kill.MTD obj.vwf
+    SCRIPT_CALL vwf.parser.kill.MTD obj.parser
+
+  CUTSCENE_WAIT_LONG
+
+    HUD_ENABLE obj.hud
+    
+    SCRIPT_CALL lifeform.library.kill.MTD obj.player
+    DIE
+
+_checkInstanciation:
+    AX16    
+    lda timer
+    and.w #$f
+    bne +
+        ;explosion
+        ;x-pos: random
+        SCRIPT_JSR core.random.get
+        and.w #$3ff
+        clc
+        adc.w #80*8
+        sta explosion.x
+
+        lda.w #POS_Y
+        sta explosion.y
+
+        jsr _explode
+
++
+    lda timer
+    and.w #$1f
+    bne +
+        ;only spawn if less than 8 enemies on screen
+        SCRIPT_JSR iterator.library.reset
+-
+        lda.w #lifeform.bower.CLS.PTR
+        SCRIPT_JSR iterator.library.each.byId
+        bcs -
+dasdas:
+        lda iterator.count
+        cmp.w #8
+        bcs +
+
+        ;spawn falling enemy
+        pea 0
+        pea 0
+        pea 0
+        pea POS_Y-80
+
+        ;x-pos: random
+        SCRIPT_JSR core.random.get
+        and.w #$1ff
+        clc
+        adc.w #104*8
+        pha
+        SCRIPT_NEW_TRY lifeform.bower.CLS.PTR iterator.target
+        pla
+        pla
+        pla
+        pla
+        pla
+
+        ;throw/jump
+        SCRIPT_JSR core.random.get
+        and.w #$3f
+        clc
+        adc.w #MATH.225_DEG
+        pha
+        pea 2
+        pei (iterator.self)
+        pei (iterator.self + 2)
+        SCRIPT_CALL lifeform.library.oncommand.MTD iterator.target LIFEFORM.COMMAND.THROW
+        plx
+        plx
+        plx
+        pla
++
+    rts
+

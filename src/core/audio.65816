@@ -1,0 +1,416 @@
+/**
+* music & sound effect handler
+*
+*
+*/
+
+.include "src/core/audio.h"
+.section "core.audio"
+
+.redef self.dataPointer temp.misc
+
+core.audio.init:
+  AX16
+  phd
+  pea ZP
+  pld
+
+  lda.w #VOID
+  sta.w GLOBAL.audio.song.current
+  jsr core.audio.uploadCode
+
+  jsr core.audio.uploadSamplePack
+  stz.w GLOBAL.audio.report.instrument
+
+  ;feedback via callback
+  lda #audio.void.CLB
+  sta.w GLOBAL.audio.report.instrument.callback
+
+  ;feedback via dumb polling
+  stz.w GLOBAL.audio.report.instrument.trigger
+
+  stz.w GLOBAL.audio.sfx.inhibit
+  stz.w GLOBAL.audio.sfx_counter
+
+  stz.w GLOBAL.audio.audioPlaying
+  stz.w GLOBAL.audio.song.current
+  lda.w #AUDIO.VOLUME.FULL
+  sta.w GLOBAL.audio.volumeCurrent
+  sta.w GLOBAL.audio.volumeTarget
+  pld
+  rts
+
+
+  CALLBACK audio.void
+  rts
+
+
+core.audio.play:
+  ;check if spc sends report data
+  AX16
+  stz.w GLOBAL.audio.report.instrument.trigger
+  lda.l APUIO1
+  and.w #$e0
+  cmp.w #$e0
+  bne +
+    lda.l APUIO2
+    cmp.w GLOBAL.audio.report.instrument
+    beq +
+      cmp.w GLOBAL.audio.report.instrument
+      beq ++
+        inc.w GLOBAL.audio.report.instrument.trigger
+
+++      
+      sta.w GLOBAL.audio.report.instrument
+      ldx.w GLOBAL.audio.report.instrument.callback
+      jsr core.callback.execute
+
++
+  stz.w GLOBAL.audio.sfx.inhibit
+  lda.w GLOBAL.audio.volumeCurrent
+  cmp.w GLOBAL.audio.volumeTarget
+  beq +
+    bcc ++
+      dec.w GLOBAL.audio.volumeCurrent
+      jsr core.audio.updateVolume
+      bra +
+
+++
+      inc.w GLOBAL.audio.volumeCurrent
+      jsr core.audio.updateVolume
+
++  
+  rts
+
+
+core.audio.playEffect:
+  AX16
+  sep #$20
+  sta.l APUIO1
+  txa
+  sta.l APUIO2
+  inc.w GLOBAL.audio.sfx_counter
+  lda.w GLOBAL.audio.sfx_counter
+  sta.l APUIO3
+
+  ;dont wait for ack
+  lda.b #SPC.COMMAND.SOUND.PLAY
+  sta.l APUIO0
+  rep #$31
+  rts
+
+
+
+
+core.audio.uploadCode:
+  AX16
+  php
+  sei
+
+  lda.w #:spc700.code
+  ldx.w #spc700.code
+  pea GLOBAL.unpack.buffer & $ffff
+  pea GLOBAL.unpack.buffer >> 16
+  jsr core.unpack.unpack
+  pla
+  pla
+
+  lda.w #GLOBAL.unpack.buffer
+  sta self.dataPointer
+  lda.w #GLOBAL.unpack.buffer >> 8
+  sta self.dataPointer+1
+
+  ldy.w #0        ;clear data pointer
+  lda.w #$BBAA
+  jsr _spc.waitAcknowledge
+
+  sep #$20
+  lda.b #$CC        ;send "start transfer"  
+  bra ++
+-
+    lda.b [self.dataPointer],y
+    iny
+    xba
+    lda.b #$00
+    bra +
+
+--
+      xba
+      lda.b [self.dataPointer],y
+      iny
+      xba
+      jsr _spc.waitAcknowledge
+      inc a
+
++
+      rep #$20
+      sta.l APUIO0
+      sep #$20
+      dex
+      bne --
+
+    jsr _spc.waitAcknowledge
+
+--
+    adc.b #$03
+    beq --
+
+++  
+  pha
+  rep #$20
+  lda.b [self.dataPointer],y
+  iny
+  iny
+  tax
+  lda.b [self.dataPointer],y
+  iny
+  iny
+  sta.l APUIO2
+  sep #$20
+  cpx.w #$0001        ;whats this?
+  lda.b #$00
+  rol a
+  sta.l APUIO1
+  adc.b #$7F
+  pla
+  sta.l APUIO0
+    jsr _spc.waitAcknowledge
+    bvs -
+
++
+  plp
+  rts
+
+_spc.commandWaitAcknowledge:
+  A8
+  sta.l APUIO0
+
+_spc.waitAcknowledge:
+  php
+  rep #$10
+  phx
+  ldx #0
+-   dex
+    bne +
+      TRIGGER_ERROR E_SpcTimeout
+
++    
+    cmp.l APUIO0
+    bne -
+
+  plx
+  plp
+  rts
+
+
+core.audio.uploadSamplePack:
+  AX16
+  php
+  sei
+  lda.w #SamplePack0
+  sta self.dataPointer
+  lda.w #:SamplePack0
+  sta self.dataPointer+2
+
+  ;pointer
+  ldy.w #0
+  ;length
+  lda.b [self.dataPointer],y
+  dec a
+  dec a
+  tax
+
+  sep #$20
+  lda.b #SPC.COMMAND.SAMPLES.UPLOAD.INIT         ;send "upload song" command
+  jsr _spc.commandWaitAcknowledge
+
+  iny
+  iny
+
+  jsr _uploadDataLoop
+
+  lda.b #SPC.COMMAND.SAMPLES.UPLOAD.DONE   ;send "upload song complete" commadn if transfer is done
+  sta.l APUIO0
+
+  plp
+  rts
+
+_uploadDataLoop:
+  A8
+-
+    lda.b [self.dataPointer],y   ;write 3 bytes to ports
+    sta.l APUIO1
+    iny
+    lda.b [self.dataPointer],y
+    sta.l APUIO2
+    iny
+    lda.b [self.dataPointer],y
+    sta.l APUIO3
+    iny
+    
+    lda.b #SPC.COMMAND.SONG.UPLOAD.STATE1   ;write ack transfer 1 to port0
+    jsr _spc.commandWaitAcknowledge
+
+    lda.b [self.dataPointer],y   ;write 3 bytes to ports
+    sta.l APUIO1
+    iny
+    lda.b [self.dataPointer],y
+    sta.l APUIO2
+    iny
+    lda.b [self.dataPointer],y
+    sta.l APUIO3
+    iny
+    
+    lda.b #SPC.COMMAND.SONG.UPLOAD.STATE2   ;write ack transfer 1 to port0
+    jsr _spc.commandWaitAcknowledge
+
+    dex
+    dex
+    dex
+    dex
+    dex
+    dex
+    cpx.w #$f000
+    bcc -
+
+  rts  
+
+
+
+
+core.audio.stopSong:
+  AX16
+  php
+  sei
+  sep #$20
+  lda.b #00
+  sta.l APUIO1
+  sta.l APUIO2
+  sta.l APUIO3
+  lda.b #SPC.COMMAND.SONG.STOP   ;write ack transfer 1 to port0
+  jsr _spc.commandWaitAcknowledge
+  stz.w GLOBAL.audio.song.current
+  plp
+  lda.w #AUDIO.VOLUME.FULL
+  sta.w GLOBAL.audio.volumeCurrent
+  sta.w GLOBAL.audio.volumeTarget  
+  rts
+
+core.audio.reset:
+  AX16
+  php
+  sei
+  sep #$20
+  lda.b #00
+  sta.l APUIO1
+  sta.l APUIO2
+  sta.l APUIO3
+  lda.b #SPC.COMMAND.RESET   ;write ack transfer 1 to port0
+  jsr _spc.commandWaitAcknowledge
+  stz.w GLOBAL.audio.song.current
+  plp
+  rts
+
+core.audio.setVolume:
+  AX16
+  and.w #$ff
+  sta.w GLOBAL.audio.volumeCurrent
+  sta.w GLOBAL.audio.volumeTarget
+  jmp core.audio.updateVolume
+
+core.audio.fadeToVolume:
+  AX16
+  and.w #$ff
+  sta.w GLOBAL.audio.volumeTarget
+  rts
+
+core.audio.fadeComplete:
+  AX16
+  lda.w GLOBAL.audio.volumeCurrent
+  cmp.w GLOBAL.audio.volumeTarget
+  sec
+  beq +
+    clc
+
++  
+  rts
+
+
+core.audio.updateVolume:
+  AX16
+  sep #$20
+  lda.w GLOBAL.audio.volumeCurrent
+  sta.l APUIO1
+  sta.l APUIO2
+
+  lda.b #SPC.COMMAND.SONG.SET_VOLUME
+  
+  jsr _spc.commandWaitAcknowledge
+  lda.b #$00
+  sta.l APUIO0
+
+  rep #$31
+  rts
+
+;arg1: song
+core.audio.playSong:
+  AX16
+  ;dont retrigger current song
+  and.w #$ff
+  beq core.audio.stopSong
+  cmp.w GLOBAL.audio.song.current
+  beq +
+    sta.w GLOBAL.audio.song.current
+    
+    php
+    sei
+    pha
+    asl a
+    clc
+    adc 1,s
+    tax
+    pla
+
+    lda.l SongLUT+2,x
+    tay
+    lda.l SongLUT,x
+    tax
+    tya
+    pea GLOBAL.unpack.buffer & $ffff
+    pea GLOBAL.unpack.buffer >> 16
+    jsr core.unpack.unpack
+    dec a
+    dec a
+    tax ;length
+    pla
+    pla
+    
+    lda.w #GLOBAL.unpack.buffer
+    sta self.dataPointer
+    lda.w #GLOBAL.unpack.buffer >> 8
+    sta self.dataPointer+1
+
+    ;pointer
+    ldy.w #0
+
+    sep #$20
+    lda.b #SPC.COMMAND.SONG.UPLOAD.INIT         ;send "upload song" command
+    jsr _spc.commandWaitAcknowledge
+
+    jsr _uploadDataLoop
+
+    lda.b #SPC.COMMAND.SONG.UPLOAD.DONE   ;send "upload song complete" commadn if transfer is done
+    sta.l APUIO0
+    plp
+
+    lda.w #AUDIO.VOLUME.FULL
+    sta.w GLOBAL.audio.volumeCurrent
+    sta.w GLOBAL.audio.volumeTarget
+
++    
+  lda.w #AUDIO.VOLUME.FULL
+  sta.w GLOBAL.audio.volumeTarget
+  rts
+
+.ends
+

@@ -1,0 +1,47 @@
+/**
+* A tiny random number generator
+*
+*/
+
+
+.include "src/core/random.h"
+.section "rng"
+
+core.random.init:
+	AX16
+	lda #$1234			;seed RNG
+	sta.w GLOBAL.random1
+	lda #$55aa
+	sta.w GLOBAL.random3
+	rts
+
+
+/**
+* get random number(byte)
+*
+* @return a<int,8bit>	random number
+*/
+core.random.get:
+	php
+	sep #$20
+	lda.w GLOBAL.random3
+	sta.w GLOBAL.random4
+	lda.w GLOBAL.random2
+	sta.w GLOBAL.random3
+	lda.w GLOBAL.random1
+	sta.w GLOBAL.random2
+	cmp.w GLOBAL.random3
+	bmi +				;If R3>R2 Then Goto R3_Greater
+		lda.w GLOBAL.random3
+	
++:
+;_get.return:
+	clc
+	adc.w GLOBAL.random4
+
+	sta.w GLOBAL.random1
+	plp
+	lda.w GLOBAL.random1
+	rts									 ;Return R1
+	
+.ends

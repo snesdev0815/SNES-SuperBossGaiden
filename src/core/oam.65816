@@ -1,0 +1,312 @@
+/**
+* PPU sprite support functions
+*
+* transfers sprite buffers to PPU, transforms upper OAM table etc.
+*/
+
+.include "src/core/oam.h"
+.section "oamManager"
+
+
+core.oam.init:
+  AX16
+  stz.w GLOBAL.currentOamSlot
+  stz.w GLOBAL.oamUploadFlag
+  stz.w GLOBAL.oamClearFlag
+
+  jsr core.oam.clearTable
+
+  sep #$20
+  stz.w GLOBAL.oam.vram.id
+  lda.w MainScreen
+  ora.b #T_OBJ_ENABLE
+  sta.w MainScreen
+
+  rep #$31
+  jmp _setupDefaultAllocation
+
+oamClearWord:
+  .dw 0
+
+core.oam.clearAll:
+  AX16
+  ;clear oam table buffer in ram
+  stz.w GLOBAL.currentOamSlot
+  stz.w GLOBAL.oamUploadFlag
+  lda.w #WRAM.CLEAR_PATTERN.OAM
+  ldy.w #OAM.GLOBAL.END - OAM.GLOBAL.START
+  ldx.w #OAM.GLOBAL.START
+  jmp ClearWRAM
+
+
+/**
+* clear oam table buffer in ram & initate upload
+*/
+core.oam.play:
+  AX16
+  lda.w GLOBAL.oamUploadFlag
+  beq +
+    ;shift remaining oamHi-table entries into place (in case number of used oam entries is not multiple of 8)
+    jsl extern.oam.transformHioam
+
+  	tsx
+    sep #$20
+  	lda #DMA_TRANSFER.OAM		;transfer type
+  	pha
+  	pea GLOBAL.oamBuffer	;source adress
+
+  	lda #RAM	;@fixme, this is a hack. must find out why above returns $00 instead of $7e
+  	pha
+  	pea OAM.TABLE.0.START	;target
+    pea (OAM.TABLE.0.LENGTH + OAM.TABLE.1.LENGTH) ;length
+    rep #$31
+
+  	jsr core.dma.registerTransfer
+  	
+  	txs
+    dec.w GLOBAL.oamUploadFlag
+
++ 
+  rts
+
+
+
+core.oam.clearTable:
+  AX16
+  jsr core.oam.clearAll
+  ;clear oam table
+  tsx
+  sep #$20
+  lda #DMA_TRANSFER.OAM | DMA_TRANSFER.OPTION.FIXED_SOURCE		;transfer type
+  pha
+  pea oamClearWord	;source adress
+  lda #:oamClearWord		;source bank
+  pha
+  pea OAM.TABLE.0.START	;target
+  pea OAM.TABLE.0.LENGTH + OAM.TABLE.1.LENGTH	;length
+  rep #$31
+  jsr core.dma.registerTransfer
+  txs
+  rts  
+
+
+_setupDefaultAllocation:
+  AX16
+  lda.w #$C000
+  sta.w GLOBAL.oam.vram.start
+  rol a
+  rol a
+  rol a
+
+  sep #$20
+  ora.b #(OBJSEL_NAME_PLUS_1000 | OBJSEL_SPRITES_8X8_32X32)
+  sta.w ObjSel
+  rep #$31
+  rts
+
+.if IS_3D == 1
+/**
+* draw standard blinking shadow sprite
+*
+* @param x<int,16bit>   pos.x
+* @param y<int,16bit>   pos.Y
+*/
+core.oam.drawShadow:
+  AX16
+  phx
+  phy
+  pea 0
+
+  ;only draw shadow every other frame
+  lda.w FrameCounter
+  lsr a
+  bcc +
+    ;calculate current screen delta
+    jsr core.screen.getPosition
+    txa
+    sta 1,s
+    
+    lda 5,s
+    sec
+    sbc #TILE.SIZE.X/2
+    sec
+    sbc 1,s
+    sta 5,s
+    cmp.w #SCREEN.DEFAULT.SIZE.X+1
+    bcs +
+
+    tya
+    sta 1,s
+    
+    lda 3,s
+    sec
+    sbc #TILE.SIZE.Y/2
+    sec
+    sbc 1,s
+    sta 3,s
+    cmp.w #SCREEN.DEFAULT.SIZE.Y+1
+    bcs +
+    
+    ldy.w GLOBAL.currentOamSlot
+
+    ;check for oam buffer overflow
+    cpy.w #GLOBAL.oamBuffer.end - GLOBAL.oamBuffer
+    bcs +
+
+    lda 5,s
+    sta.w GLOBAL.oamBuffer,y
+
+    lda 3,s
+    sta.w (GLOBAL.oamBuffer&$ffff)+1,y
+
+    lda.w GLOBAL.oam.graphics.default.tileconfig
+
+    clc
+    adc #SPRITE.GRAPHICS.DEFAULT.SHADOW
+    sta.w (GLOBAL.oamBuffer&$ffff)+2,y
+
+    iny
+    iny
+    iny
+    iny
+
+    ;check for oam buffer overflow
+    cpy.w #GLOBAL.oamBuffer.end - GLOBAL.oamBuffer
+    bcs +
+
+    lda 5,s
+    clc
+    adc.w #TILE.SIZE.X
+    sta.w GLOBAL.oamBuffer,y
+
+    lda 3,s
+    sta.w (GLOBAL.oamBuffer&$ffff)+1,y
+
+    lda.w GLOBAL.oam.graphics.default.tileconfig
+
+    clc
+    adc #SPRITE.GRAPHICS.DEFAULT.SHADOW
+    ora.w #OAM.FORMAT.HFLIP
+    sta.w (GLOBAL.oamBuffer&$ffff)+2,y
+    
+    iny
+    iny
+    iny
+    iny
+
+    ;update oam pointer
+    sty.w GLOBAL.currentOamSlot
+
++
+
+  pla
+  ply
+  plx
+  rts
+
+
+/**
+* draw standard blinking shadow sprite
+*
+* @param x<int,16bit>   pos.x
+* @param y<int,16bit>   pos.Y
+*/
+core.oam.drawShadowAbsolute:
+  AX16
+  phx
+  phy
+  pea 0
+
+  ;only draw shadow every other frame
+  lda.w FrameCounter
+  lsr a
+  bcc +
+    ;calculate current screen delta
+    lda 5,s
+    sec
+    sbc #TILE.SIZE.X/2
+    sta 5,s
+    cmp.w #SCREEN.DEFAULT.SIZE.X+1
+    bcs +
+
+    lda 3,s
+    sec
+    sbc #TILE.SIZE.Y/2
+    sta 3,s
+    cmp.w #SCREEN.DEFAULT.SIZE.Y+1
+    bcs +
+    
+    ldy.w GLOBAL.currentOamSlot
+
+    ;check for oam buffer overflow
+    cpy.w #GLOBAL.oamBuffer.end - GLOBAL.oamBuffer
+    bcs +
+
+    lda 5,s
+    sta.w GLOBAL.oamBuffer,y
+
+    lda 3,s
+    sta.w (GLOBAL.oamBuffer&$ffff)+1,y
+
+    lda.w GLOBAL.oam.graphics.default.tileconfig
+
+    clc
+    adc #SPRITE.GRAPHICS.DEFAULT.SHADOW
+    sta.w (GLOBAL.oamBuffer&$ffff)+2,y
+
+    iny
+    iny
+    iny
+    iny
+
+    ;update oam pointer
+    sty.w GLOBAL.currentOamSlot
+
++
+
+  pla
+  ply
+  plx
+  rts
+.endif
+
+.ends
+
+.base BSL
+.bank BANK.DATA
+.section "extern.oam" superfree
+
+.macro TRANSFORM_HIOAM
+    clc
+    lda.b $0 + (\@*4)
+    ror a
+    ror a
+    ora.b $1 + (\@*4)
+    ror a
+    ror a
+    ora.b $2 + (\@*4)
+    ror a
+    ror a
+    ora.b $3 + (\@*4)
+    ror a
+    ror a
+    ror a
+    sta.w GLOBAL.oamBufferHi + \@
+
+.endm
+
+extern.oam.transformHioam:
+  .accu 8
+  AX16
+  sep #$20
+  phd
+  pea GLOBAL.oamBufferHi
+  pld
+  .rept 128/4
+  TRANSFORM_HIOAM
+  .endr
+
+  pld
+  rep #$31
+  rtl
+.ends

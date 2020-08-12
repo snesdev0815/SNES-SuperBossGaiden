@@ -1,0 +1,243 @@
+/**
+* Script object used mainly for high-level flow control
+*
+* There's not really a scripting language here, just a bunch of macros for abstraction.
+*
+*/
+
+.include "src/class/script/script.h"
+.section "script class"
+
+/**
+* instanciate script.
+*
+* @param 1 int<16bit>	start adress of script in bank 0, must have magic signature
+*/
+  METHOD init
+	lda OBJECT.CALL.ARG.1,s
+	pha
+	tax
+	lda.l (:extend.script << 16),x
+	cmp #SCRIPT_MAGIC
+	beq _initScriptNotInvalid
+      TRIGGER_ERROR E_BadScript
+
+_initScriptNotInvalid:
+	pla
+	sta script.initAdress
+	inc a	;skip signature magic and adjust for jump offset
+	sta this.currPC
+
+	lda OBJECT.CALL.ARG.2,s
+	sta script.args
+	lda OBJECT.CALL.ARG.3,s
+	sta script.args+2
+	lda OBJECT.CALL.ARG.4,s
+	sta script.args+4
+	lda OBJECT.CALL.ARG.5,s
+	sta script.args+6
+	lda OBJECT.CALL.ARG.6,s
+	sta script.args+8
+	lda OBJECT.CALL.ARG.7,s
+	sta script.args+10
+	lda OBJECT.CALL.ARG.8,s
+	sta script.args+12
+	lda OBJECT.CALL.ARG.9,s
+	sta script.args+14
+	lda OBJECT.CALL.ARG.10,s
+	sta script.args+16
+	lda OBJECT.CALL.ARG.11,s
+	sta dimension.position.x+1
+	lda OBJECT.CALL.ARG.12,s
+	sta dimension.position.y+1
+	php
+	phb
+	pla
+	and.w #%1111101111111111	;exclude irq flag
+	sta this.buffFlags
+	
+	jsr script.library.initAge
+	jsl initHashPointers
+
+	lda.w #:script.void.CLB
+	sta this.oncommand+2
+	lda.w #script.void.CLB
+	sta this.oncommand
+
+	bra _play	;need to stay on same stack-tier here
+
+_collectGarbage:
+	php
+	rep #$31
+	ldy #NumOfHashptr
+	ldx #hashPtr
+	jsr iterator.library.killObjList
+	plp
+	rts
+
+  CALLBACK script.void
+  	rtl
+
+extend.script.collectGarbage:
+	jsr _collectGarbage
+	rtl
+
+  METHOD play
+  	jml extend.script.play
+extend.script.play.return:  	
+  	rts
+
+  METHOD getScriptAdress
+	lda script.initAdress
+	rts
+
+
+;script obj kill routine, for external calls
+  METHOD kill
+	jsr _collectGarbage
+	jmp object.library.kill
+
+;jumps to arbitrary routine in main code bank
+script.trampoline:
+	pha
+	pea _return-1	;push return adress
+
+	lda 6+2,s
+	dec a
+	pha
+	
+	lda 5,s
+
+	rts ;this is actually a jump to subroutine on stack, then return
+_return:
+	sta 1,s
+	pla
+	rtl
+
+	METHOD oncommand
+    ldx this.oncommand
+    ldy this.oncommand+2
+    jmp core.callback.execute.long
+
+  CLASS Script oncommand getScriptAdress
+.ends
+
+.base BSL
+.bank BANK.DATA
+.section "extend.script" superfree
+
+extend.script:
+
+script.savePosition:
+	php
+	phb
+	rep #$31
+	sta this.buffA
+	pla
+	and.w #%1111101111111111	;exclude irq flag
+	sta this.buffFlags
+	lda 1,s ;save adress AFTER savePC. why exec savePosition again each frame?	
+	sta this.currPC
+	stx this.buffX
+	sty this.buffY
+	rts
+
+script.setLoopStart:
+	php
+	phb
+	rep #$31
+	sta this.buffA
+    sta this.timer
+	pla
+	and.w #%1111101111111111	;exclude irq flag
+	sta this.buffFlags
+	lda 1,s	;save adress before savePC was called
+	dec a
+	dec a
+	dec a	;one more for rts-jump
+	sta this.currPC
+	stx this.buffX
+	sty this.buffY
+	rts
+
+script.waitLoop:
+	rep #$31
+	lda this.timer
+	beq +
+		dec this.timer
+		pla	;return from script
+
++
+	rts	
+
+;a: pc target adress
+script.setPosition:
+	php
+	phb
+	rep #$31
+	stz this.buffA
+	dec a	;one more for rts-jump
+	sta this.currPC	
+	pla
+	and.w #%1111101111111111	;exclude irq flag
+	sta this.buffFlags
+	stx this.buffX
+	sty this.buffY
+	rts
+
+extend.script.play:
+	rep #$31
+	tsc
+	dec a	;target is one subroutine tier deeper
+	dec a
+	sta this.buffStack
+
+	php
+	php
+	pla
+	and.w #%100	;preserve irq flag
+	ora this.buffFlags
+	pha
+	
+	lda this.buffA
+	ldx this.buffX
+	ldy this.buffY
+	plb
+	plp
+	pea _return-1	;push return adress
+	pei (this.currPC)	;push target subroutine adress
+
+	rts ;this is actually a jump to subroutine on stack, then return
+_return:
+	jml extend.script.play.return
+
+;script termination routine, called from within script
+terminateScript:	
+	rep #$31
+    jsl extend.script.collectGarbage
+	lda this.buffStack
+	tsc
+	cmp this.buffStack
+	beq _terminateScriptStackOk
+        SCRIPT_TRIGGER_ERROR E_ScriptStackTrash
+
+_terminateScriptStackOk:
+	lda #OBJR_kill	;lastly, kill script instance itself
+	sta 5,s	
+	rts
+
+;init obj hash pointers, mark as "empty, pointing to no obj"
+initHashPointers:
+	AX16
+	lda.w #VOID
+.redef COUNTER 0
+.rept NumOfHashptr
+	sta hashPtr.1.id+(COUNTER*_sizeof_oopObjHash)
+	.redef COUNTER COUNTER+1
+.endr
+	rtl
+
+.include "src/include/script.include"
+
+.ends
+

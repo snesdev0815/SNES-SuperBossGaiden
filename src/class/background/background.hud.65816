@@ -1,0 +1,595 @@
+/**
+* HUD display on status (2bpp) layer
+*
+*/
+
+.include "src/class/background/background.hud.h"
+.section "background.hud"
+
+  METHOD init
+  lda.w #BG.LAYER.2
+  sta.b this.bg
+
+  lda.w #ANIMATION.FLAGS.POSITION_ABSOLUTE
+  tsb animation.flags.static
+
+  lda.w #BG.FORMAT.PRIORITY
+  sta animation.buffer.flags
+
+  jsr _setAnimation
+
+  NEW hdma.paletteAnimation.CLS.PTR this.obj.hdmapal 0 0 HDMA.berzerk.PTR 0
+
+  ;make this a non-level-member
+  lda.w #OBJECT.PROPERTIES.isHdma
+  CALL hdma.paletteAnimation.setProperties.MTD this.obj.hdmapal
+  inc this.dirty
+
+  rts
+
+_setAnimation:
+  AX16
+  lda.w #BG.berzerk.PTR
+  jsr background.library.startAnimation
+  lda this.state
+  jsr background.library.setFrame
+  jsr background.library.stopAnimation
+  sep #$20
+  lda #$1
+  sta.b animation.speed
+  rep #$31
+
+  jsr background.library.allocateMemory
+  lda.b this.bg
+  jsr background.library.makePhysical
+
+  ;play once to upload data
+  jmp background.library.playAnimation
+
+  METHOD play
+  lda this.disabled
+  beq +
+    rts
+
++
+
+  lda this.mode
+  cmp this.mode.last
+  beq +++
+  lda this.mode
+  beq +
+    ldx.w #this.obj.hdma
+    jsr core.object.exists
+    bcs ++
+      NEW hdma.logoZoom.CLS.PTR this.obj.hdma BG3VOFS 0
+
+++
+    ldx.w #this.obj.palette
+    jsr core.object.exists
+    bcs ++
+      pea FALSE
+      pea 0
+      pea 4   ;dont affect timer palette
+      lda animation.palette.start
+      lsr a
+      pha    
+      NEW palette.animation.CLS.PTR this.obj.palette PALETTE.hud.super.PTR
+      pla
+      pla
+      pla
+      pla
+
+++
+  bra +++
+
++
+    jsr _resetSuperBerzerk
++++
+  lda this.mode
+  sta this.mode.last
+
+  jsr background.library.playAnimation
+  lda this.state
+  asl a
+  tax
+  jsr (_state.lut,x)
+  lda.b this.bg
+  jmp background.library.updateScroll
+
+_state.lut:
+  .dw _state.level
+  .dw _state.report
+
+_state.level:
+  AX16
+  lda this.dirty
+  beq +
+    lda.w #HUD.LEVEL.DMA.SIZE
+    clc
+    adc.w GLOBAL.dmaQueueChannel.size.total
+    cmp #DMA_TRANSFER.TRANSFER.MAX
+    bcs +
+      stz this.dirty
+      jmp _flush
+
++
+  rts
+
+_state.report:
+  AX16
+
+
+;y: x source
+;x: input id
+;copy 8x4 tile block
+_copySidekickBlock:
+  AX16
+  txa
+  asl a
+  tax
+  lda.l hud.sidekick.target,x
+  clc
+  adc background.ramBuffer.start
+  tax
+
+  tya
+  clc
+  adc background.ramBuffer.start
+  tay  
+  pea 6
+-
+    lda.w (GLOBAL.wramBuffer.start&$ffff) + (0*32*2),y
+    sta.w (GLOBAL.wramBuffer.start&$ffff) + (0*32*2),x
+
+    lda.w (GLOBAL.wramBuffer.start&$ffff) + (1*32*2),y
+    sta.w (GLOBAL.wramBuffer.start&$ffff) + (1*32*2),x
+
+    lda.w (GLOBAL.wramBuffer.start&$ffff) + (2*32*2),y
+    sta.w (GLOBAL.wramBuffer.start&$ffff) + (2*32*2),x
+
+    lda.w (GLOBAL.wramBuffer.start&$ffff) + (3*32*2),y
+    sta.w (GLOBAL.wramBuffer.start&$ffff) + (3*32*2),x
+
+    inx
+    inx
+    iny
+    iny
+
+    lda 1,s
+    dec a
+    sta 1,s
+    bne -
+
+  pla
+  sec
+  rts
+
+
+_resetSuperBerzerk:
+  AX16
+  TRY hdma.logoZoom.kill.MTD this.obj.hdma
+  TRY palette.animation.kill.MTD this.obj.palette
+  jmp _refreshAll
+
+_writeTimeLevel:
+  AX16
+  pha
+
+  txa
+  clc
+  adc background.ramBuffer.start
+  tax
+
+  ;high nibble
+  lda 1,s
+  and.w #$f0
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+
+  asl a ;word
+  asl a ;one number: two tiles wide
+  clc
+  adc.w #TIMER.SOURCE
+  clc
+  adc background.ramBuffer.start  
+  tay
+  lda.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.0,y
+  sta.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.0,x
+  lda.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.1,y
+  sta.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.1,x
+  lda.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.2,y
+  sta.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.2,x
+  lda.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.3,y
+  sta.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.3,x
+
+  ;low nibble
+  lda 1,s
+  and.w #$f
+
+  asl a ;word
+  asl a ;one number: two tiles wide
+  clc
+  adc.w #TIMER.SOURCE
+  clc
+  adc background.ramBuffer.start  
+  tay
+  lda.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.0,y
+  sta.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.0+4,x
+  lda.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.1,y
+  sta.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.1+4,x
+  lda.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.2,y
+  sta.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.2+4,x
+  lda.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.3,y
+  sta.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.3+4,x
+
+  pla
+  rts
+
+_writeTimeReport:
+  AX16
+  pha
+
+  txa
+  clc
+  adc background.ramBuffer.start
+  tax
+
+  ;high nibble
+  lda 1,s
+  and.w #$f0
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+
+  asl a ;word
+  clc
+  adc.w #TIMER.SOURCE
+  clc
+  adc background.ramBuffer.start  
+  tay
+  lda.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.0,y
+  sta.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.0,x
+
+  ;low nibble
+  lda 1,s
+  and.w #$f
+
+  asl a ;word
+  clc
+  adc.w #TIMER.SOURCE
+  clc
+  adc background.ramBuffer.start  
+  tay
+  lda.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.0,y
+  sta.w (GLOBAL.wramBuffer.start&$ffff)+TIMER.TILE.0+2,x
+
+  pla
+  rts
+
+_flush:
+  AX16
+  tsx
+  lda.w #(GLOBAL.wramBuffer.start&$ffff)+HUD.LEVEL.DMA.SOURCE
+  clc
+  adc.b background.ramBuffer.start
+  tay
+
+  sep #$20
+  lda #DMA_TRANSFER.VRAM  ;transfer type
+  pha
+  phy
+  lda.b #RAM    ;source bank
+
+  pha
+  rep #$31
+
+  lda animation.tilemap.start
+  clc
+  adc.w #HUD.LEVEL.DMA.SOURCE
+  pha
+  pea HUD.LEVEL.DMA.SIZE
+
+  jsr core.dma.registerTransfer
+  txs
+  rts
+
+  METHOD kill
+  CALL hdma.paletteAnimation.kill.MTD this.obj.hdmapal
+  TRY palette.animation.kill.MTD this.obj.timerpal
+  lda this.bg
+  jmp background.library.kill
+
+
+  METHOD updateStatus
+  lda this.disabled
+  beq +
+    clc
+    rts
+
++  
+  ;player id
+  lda OBJECT.CALL.ARG.3,s
+  and.w #3
+  asl a
+  tax
+  lda OBJECT.CALL.ARG.2,s
+  sta this.mode
+  lda OBJECT.CALL.ARG.1,s
+  jmp (_update.lut,x)
+
+_update.lut:
+  .dw _update.player
+  .dw _update.sidekick
+  .dw _update.sidekick
+  .dw _update.void
+
+_update.void:
+  TRIGGER_ERROR E_IndexError
+
+_update.sidekick:
+  AX16
+  sta this.value,x
+  txy
+  inc this.dirty
+  lda this.player.state.0,x
+  asl a
+  tax
+  tya
+  lsr a
+  jmp (_update.sidekick.lut,x)
+
+_update.sidekick.lut:
+  .dw _update.sidekick.disabled
+  .dw _update.sidekick.off
+  .dw _update.sidekick.on
+  .dw _update.void
+
+_update.sidekick.disabled:
+  AX16
+  tax
+  ldy.w #HUD.SIDEKICK.SOURCE.VOID
+  jmp _copySidekickBlock  
+
+_update.sidekick.off:
+  AX16
+  tax  
+  ldy.w #HUD.SIDEKICK.SOURCE.PRESS_START.X + HUD.SIDEKICK.SOURCE.Y
+  jmp _copySidekickBlock
+
+_update.sidekick.on:
+  AX16
+  pha
+  asl a
+  tax
+  lda.l hud.sidekick.source,x
+  tay
+  lda 1,s
+  tax
+  jsr _copySidekickBlock
+
+  ;************************
+  ;first clear, with first tile in tilemap
+  lda 1,s
+  asl a
+  tax
+  lda.l hud.sidekick_bar.target,x
+  clc
+  adc.b background.ramBuffer.start
+  tax
+  ldy.b background.ramBuffer.start
+  lda.w GLOBAL.wramBuffer.start,y
+  ldy.w #SIDEKICK.TARGET.LENGTH
+
+-
+    sta.w (GLOBAL.wramBuffer.start&$ffff),x
+    inx
+    inx
+    dey
+    bne -
+
+  lda 1,s
+  asl a
+  tax
+  lda this.value,x
+
+  ;divide by 16, full blocks (x4)
+  lsr a
+  lsr a
+  lsr a
+  pha
+
+  lda 1+2,s
+  asl a
+  tax
+  lda.l hud.sidekick_bar.target,x
+  clc
+  adc.b background.ramBuffer.start
+  tax
+
+  ldy.b background.ramBuffer.start  
+  lda.w (GLOBAL.wramBuffer.start&$ffff)+BERZERK.SOURCE.FULL,y
+  ldy.w #SIDEKICK.TARGET.LENGTH
+  pha
+-
+    lda 3,s
+    beq +
+
+    lda 3,s
+    dec a
+    sta 3,s
+
+    lda 1,s
+    sta.w (GLOBAL.wramBuffer.start&$ffff),x
+    inx
+    inx
+    dey
+    bne -
+    bra ++
+
++
+  ;write remainder fraction
+  phx
+  lda 1+6,s
+  asl a
+  tax
+  lda this.value,x
+  and.w #$7
+  asl a
+  clc
+  adc background.ramBuffer.start
+  tax
+  lda.w (GLOBAL.wramBuffer.start&$ffff)+BERZERK.SOURCE.EMPTY,x
+  plx
+  sta.w (GLOBAL.wramBuffer.start&$ffff),x
+
+++
+  pla
+  pla
+
+  ;**********************+
+  plx
+  sec
+  rts  
+
+
+_update.player:
+  AX16
+  ;blink if gain
+  cmp this.value
+  sta this.value
+  bcc +
+  beq +
+    lda.w #0
+    CALL hdma.paletteAnimation.setFrame.MTD this.obj.hdmapal
+
++  
+  ;first clear, with first tile in tilemap
+  ldy.w #BERZERK.TARGET.LENGTH
+  ldx.b background.ramBuffer.start
+  lda.w GLOBAL.wramBuffer.start,x
+
+-
+    sta.w (GLOBAL.wramBuffer.start&$ffff)+BERZERK.TARGET.ROW0,x
+    sta.w (GLOBAL.wramBuffer.start&$ffff)+BERZERK.TARGET.ROW1,x
+    sta.w (GLOBAL.wramBuffer.start&$ffff)+BERZERK.TARGET.ROW2,x
+    inx
+    inx
+    dey
+    bne -
+
+
+  ;divide by 8, full blocks (x8)
+  lda this.value
+  lsr a
+  lsr a
+  lsr a
+  pha
+  ldy.w #BERZERK.TARGET.LENGTH
+  ldx.b background.ramBuffer.start
+  lda.w (GLOBAL.wramBuffer.start&$ffff)+BERZERK.SOURCE.FULL,x
+  pha
+-
+    lda 3,s
+    beq +
+
+    lda 3,s
+    dec a
+    sta 3,s
+
+    lda 1,s
+    sta.w (GLOBAL.wramBuffer.start&$ffff)+BERZERK.TARGET.ROW0,x
+    sta.w (GLOBAL.wramBuffer.start&$ffff)+BERZERK.TARGET.ROW1,x
+    sta.w (GLOBAL.wramBuffer.start&$ffff)+BERZERK.TARGET.ROW2,x
+    inx
+    inx
+    dey
+    bne -
+    bra ++
+
++
+  ;write remainder fraction
+  phx
+  lda this.value
+  and.w #$7
+  asl a
+  clc
+  adc background.ramBuffer.start
+  tax
+  lda.w (GLOBAL.wramBuffer.start&$ffff)+BERZERK.SOURCE.EMPTY,x
+  plx
+  sta.w (GLOBAL.wramBuffer.start&$ffff)+BERZERK.TARGET.ROW0,x
+  sta.w (GLOBAL.wramBuffer.start&$ffff)+BERZERK.TARGET.ROW1,x
+  sta.w (GLOBAL.wramBuffer.start&$ffff)+BERZERK.TARGET.ROW2,x
+
+++
+  pla
+  pla
+  inc this.dirty
+  sec
+  rts
+
+
+  METHOD setPlayerState
+  lda OBJECT.CALL.ARG.1,s
+  and.w #3
+  asl a
+  tax
+  lda OBJECT.CALL.ARG.2,s
+  sta this.player.state.0,x
+  lda this.value,x
+  jmp _update.sidekick
+
+
+  METHOD disable
+  lda.w #TRUE
+  sta this.disabled
+  ldx #this.obj.hdmapal
+  jsr core.object.disable
+  ldx #this.obj.hdma
+  jsr core.object.disable
+  TRY palette.animation.kill.MTD this.obj.timerpal
+  TRY palette.animation.kill.MTD this.obj.palette
+  stz this.timerpal.current
+  lda.b this.bg
+  jsr background.library.makeVirtual
+  jmp background.library.deallocate
+
+
+  METHOD enable
+  stz this.disabled
+  ldx #this.obj.hdmapal
+  jsr core.object.enable
+  ldx #this.obj.hdma
+  jsr core.object.enable
+  jmp _refreshAll
+
+
+_refreshAll:
+  AX16  
+  jsr _setAnimation
+
+  ;refresh all players once
+  pea 3
+-
+    lda 1,s
+    dec a
+    asl a
+    tax
+    lda this.value,x
+    jsr (_update.lut,x)
+
+    lda 1,s
+    dec a
+    sta 1,s
+    bne -
+
+  pla
+  rts
+
+
+  CLASS background.hud updateStatus setPlayerState
+
+.ends	

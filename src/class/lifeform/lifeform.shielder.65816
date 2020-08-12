@@ -1,0 +1,108 @@
+/**
+* Enemy that faces player, only attackable from behind with thrown object
+* 
+*/
+
+.include "src/class/lifeform/lifeform.shielder.h"
+.section "lifeform.shielder"
+
+  METHOD init
+  lda.w #SPRITE.shielder.dummy.PTR
+  ldx.w #0
+  jsl extern.lifeform.initialize
+
+  lda.w #1
+  sta lifeform.hitpoints
+  rts
+
+
+  METHOD play
+  lda animation.timer
+  and.w #$7
+  bne +
+    jsl extern.lifeform.turnToTarget
+
+
++
+  jsl extern.lifeform.evalOffscreen
+  rts
+
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +
+    ;only thrown attack hurts
+    lda OBJECT.CALL.ARG.6,s
+    cmp #LIFEFORM.ATTACK.THROWN
+    bne ++++
+      ;only from behind works
+      lda OBJECT.CALL.ARG.2,s
+      sta iterator.target+2
+      lda OBJECT.CALL.ARG.3,s
+      sta iterator.target
+
+      CALL lifeform.library.getCollisionBasepoint.MTD iterator.target
+
+      ;must hit low
+      tya
+      clc
+      adc.w #30
+      sec
+      sbc dimension.collision.basepoint.y
+      cmp dimension.position.y + 1
+      bcc ++
+
+      lda animation.flags.static    
+      bit.w #ANIMATION.FLAGS.X_MIRROR
+      bne +++
+          ;facing right        
+          txa
+          sec
+          sbc dimension.collision.basepoint.x
+          cmp dimension.position.x + 1
+          bcs ++
+            jsl extern.lifeform.onAttack
+            rts
+
++++        
+          ;facing left
+          txa
+          sec
+          sbc dimension.collision.basepoint.x
+          cmp dimension.position.x + 1
+          bcc ++
+            jsl extern.lifeform.onAttack
+            rts
+
+++
+    ;blocked
+    lda.w #AUDIO.EFFECT.BLOCK
+    jsr interface.dimension.playSoundEffect
+    sec
+    rts
+
+++++
+    ;blocked, but doesnt register as hit (so combo doesnt trigger)
+    lda.w #AUDIO.EFFECT.BLOCK
+    jsr interface.dimension.playSoundEffect
+    clc
+    rts
+
++
+  clc
+  rts
+
+
+  CLASS lifeform.shielder oncommand
+
+.ends	
+	

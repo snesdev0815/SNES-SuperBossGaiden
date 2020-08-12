@@ -1,0 +1,71 @@
+/**
+* Helper functions for textlayer printing
+*
+*/
+
+.include "src/class/background/textlayer/textlayer.library.h"
+.section "textlayer.library"
+
+background.library.textlayer.allocateMemory:
+  AX16
+  sep #$20
+  lda #BG.LAYER.2
+  sta.b textlayer.bg
+
+  lda.b #PALETTE.BPP.2
+  sta background.tiles.bpp
+
+  rep #$31
+  lda textlayer.font.tiles.length
+  sta animation.tiles.length
+  lda textlayer.font.palette.length
+  sta animation.palette.length
+  lda.w #TILEMAP.SIZE.SINGLE
+  sta animation.tilemap.length
+  sta animation.frame.tilemap.length
+
+  jmp background.library.allocateMemory
+
+
+background.library.textlayer.uploadFont:
+  AX16
+  sep #$20
+  tsx
+  lda #DMA_TRANSFER.VRAM    ;transfer type
+  pha
+  pei (textlayer.font.tiles)
+  lda.b textlayer.font.tiles+2      ;source bank
+  pha
+  rep #$31
+
+  lda textlayer.font.tiles.start.id
+  and.w #$ff
+  asl a
+  asl a
+  asl a
+  asl a
+  clc
+  adc animation.tiles.start
+  pha
+  pei (textlayer.font.tiles.length)
+
+  jsr core.dma.registerTransfer
+
+  sep #$20
+  lda #DMA_TRANSFER.CGRAM   ;transfer type
+  pha
+
+  pei (textlayer.font.palette)
+  lda.b textlayer.font.palette+2        ;source bank
+  pha
+  rep #$31
+
+  pei (animation.palette.start)
+  pei (textlayer.font.palette.length)
+
+  jsr core.dma.registerTransfer
+
+  txs
+  rts
+
+.ends

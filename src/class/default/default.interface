@@ -1,0 +1,22 @@
+/*
+* part of a very crude function inheritance model
+*
+* when included at the end inside of an object section,
+* this file will implement all common object methods not yet defined in object itself,
+* resulting in less redundant typed code and implementation stringency.
+*/
+
+.section "interface.default"
+
+interface.default.init:
+interface.default.play:
+interface.default.pause:
+interface.default.disable:
+interface.default.enable:
+  rts
+
+interface.default.kill:
+	jmp object.library.kill
+
+.ends
+

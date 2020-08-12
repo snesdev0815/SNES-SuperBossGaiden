@@ -1,0 +1,177 @@
+/**
+* Script that's executed every time an exit is taken. Handles screen fade-out, player pausing and entering pipe, level loading etc.
+*
+*/
+
+  SCRIPT exit
+
+  .redef obj.script.slave hashPtr.1
+
+  .redef obj.brightness this._tmp
+  .redef obj.hdma.window this._tmp+4
+  .redef obj.level this._tmp+8
+  .redef level.current this._tmp+12
+
+  .redef script.target  script.args
+  .redef exit.flags script.args+2
+  .redef level.target script.args+4
+  .redef obj.target script.args+6
+  .redef target.pos.x script.args+10 
+  .redef target.pos.y script.args+12
+
+
+  SCRIPT_NEW level.generic.CLS.PTR obj.level
+  SCRIPT_CALL level.generic.getId.MTD obj.level
+  sta level.current
+
+  SCRIPT_NEW Brightness.CLS.PTR obj.brightness
+
+  pea 0
+  pea 0
+  pei (script.target)
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave
+  pla
+  pla
+  pla
+  WAIT_FOR obj.script.slave
+
+  SCRIPT_JSR iterator.library.reset
+-  
+    lda.w #level.exit.CLS.PTR
+    SCRIPT_JSR iterator.library.each.byId
+    bcc +
+      ldx #iterator.target
+      SCRIPT_JSR core.object.pause
+      bra -
+
++
+
+      ;pause all lifeforms
+      SCRIPT_JSR iterator.library.reset
+-     lda.w #OBJECT.PROPERTIES.isLifeform
+      jsl extern.iterator.each.byProperties
+      bcc +
+        ldx.w #iterator.target
+        SCRIPT_JSR core.object.pause
+        bra -
+
++
+	SAVE
+
+	lda level.target
+  lda level.current
+  cmp level.target
+  beq +
+    ;end all cutscene scripts here:
+    jsr _killCutscenes
+
+    SLEEP 3
+
+    jsr _killMisc
+
+    WAIT_FOR obj.hdma.window
+
+    lda.w #level.generic.CLS.PTR
+    SCRIPT_JSR iterator.library.kill.byId  
+
+  	;make sure garbage collection runs once
+  	SLEEP 2
+
+  	pei (level.target)
+  	SCRIPT_NEW level.generic.CLS.PTR VOID
+  	pla
+
+  	lda.w #BRIGHTNESS.FULL
+  	SCRIPT_CALL Brightness.fadeTo.MTD obj.brightness
+  	SCRIPT_NEW hdma.windowMaskAnimation.CLS.PTR obj.hdma.window HDMA.fade_in.PTR
+    bra ++
+
++
+  ;same map but out of screen?
+  ldy target.pos.y
+  ldx target.pos.x
+  SCRIPT_JSR core.screen.checkIfOnScreen
+  bcs ++
+    ;out of screen, blink
+    SCRIPT_NEW hdma.windowMaskAnimation.CLS.PTR obj.hdma.window HDMA.blink.PTR
+
+    LOOP 4
+    LOOP
+
+++
+  lda obj.target
+  sta iterator.target
+  lda obj.target+2
+  sta iterator.target+2
+
+      ;loop over all newly loaded player objects and force their position to exit target position.
+      SCRIPT_JSR iterator.library.reset
+-     lda.w #(OBJECT.PROPERTIES.isLifeform | OBJECT.PROPERTIES.isPlayer)
+      jsl extern.iterator.each.byProperties
+      bcc +
+        jsr _relocatePlayer
+        bra -
+
++
+++
+
+  SCRIPT_JSR iterator.library.reset
+-  
+    lda.w #level.exit.CLS.PTR
+    SCRIPT_JSR iterator.library.each.byId
+    bcc +
+      ldx #iterator.target
+  	  SCRIPT_JSR core.object.isPaused
+	    bcc -
+
+      ldx #iterator.target
+      SCRIPT_JSR core.object.resume
+      bra -
+
++
+
+      ;unpause all paused lifeforms
+      SCRIPT_JSR iterator.library.reset
+-     lda.w #OBJECT.PROPERTIES.isLifeform
+      jsl extern.iterator.each.byProperties
+      bcc +
+        ldx #iterator.target
+        SCRIPT_JSR core.object.isPaused
+        bcc -
+
+        ldx.w #iterator.target
+        SCRIPT_JSR core.object.resume
+        bra -
+
++
+	SAVE
+
+  DIE
+  
+_relocatePlayer:
+  AX16 
+  pea 0   ;z
+  pei (target.pos.y)
+  pei (target.pos.x)
+  SCRIPT_CALL lifeform.library.setPosition.MTD iterator.target
+  pla
+  pla
+  pla
+  rts
+
+_killCutscenes:
+  SCRIPT_JSR iterator.library.reset
+-    
+    lda.w #OBJECT.PROPERTIES.isCutscene
+    SCRIPT_JSR iterator.library.others
+    bcc ++
+      SCRIPT_CALL Script.oncommand.MTD iterator.target SCRIPT.COMMAND.EXIT
+      bra -
+
+++
+  rts
+
+_killMisc:
+  SCRIPT_NEW hdma.windowMaskAnimation.CLS.PTR obj.hdma.window HDMA.fade_out.PTR
+  SCRIPT_CALL hdma.windowMaskAnimation.setCallback.MTD obj.hdma.window hdma.blackScreen.CLB
+  rts

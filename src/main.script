@@ -1,0 +1,297 @@
+/**
+* Main flow control
+*
+*/
+
+  SCRIPT main
+
+  .redef obj.script.slave hashPtr.1
+  .redef obj.brightness hashPtr.2
+  .redef obj.persistency hashPtr.3
+  .redef obj.gfxDefault hashPtr.4
+  .redef obj.performance hashPtr.5
+
+ .redef targetMap this._tmp
+ .redef targetScript this._tmp+2
+
+
+  SCRIPT_NEW persistency.slot.CLS.PTR obj.persistency
+
+  lda.w #SAVE_SLOT.DEFAULT
+  SCRIPT_CALL persistency.slot.load.MTD obj.persistency
+
+  ;set screen mode
+  sep #$20
+  lda #(T_BG1_ENABLE | T_BG2_ENABLE | T_BG3_ENABLE | T_OBJ_ENABLE)
+  sta.w windowMainscreen
+  sta.w windowSubscreen
+
+  stz.w FixedColourR
+  stz.w FixedColourG
+  stz.w FixedColourB
+
+  lda #(CGWSEL_CLIP_COL_NEVER | CGWSEL_NO_COL_MATH_NEVER | CGWSEL_ADD_SUBSCREEN)
+  sta.w colorAdditionSelect
+
+  lda #(CGADSUB_ADDSUB_COL | CGADSUB_HALF_COL | CGADSUB_BAC_ENABLE | CGADSUB_OBJ_ENABLE | CGADSUB_BG3_ENABLE | CGADSUB_BG2_ENABLE | CGADSUB_BG1_ENABLE)
+  sta.w CgadsubConfig
+
+  lda.b #(BGMODE_MODE_1 | BGMODE_PRIORITY_LAYER_3)
+  sta.w ScreenMode
+
+  lda.w MainScreen
+  and.b #(T_BG1_ENABLE | T_BG2_ENABLE | T_BG3_ENABLE | T_BG4_ENABLE) ~$ff  
+  sta.w MainScreen
+
+  lda.w SubScreen
+  and.b #(T_BG1_ENABLE | T_BG2_ENABLE | T_BG3_ENABLE | T_BG4_ENABLE) ~$ff  
+  sta.w SubScreen
+  rep #$31
+
+  lda.w #:oncommand.mainSetTargetScript.CLB
+  sta this.oncommand+2
+  lda.w #oncommand.mainSetTargetScript.CLB
+  sta this.oncommand
+
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave disclaimer
+  WAIT_FOR obj.script.slave
+
+.if USE_FLASH_SAVE == 1
+  SCRIPT_JSR persistency.checkFlashOk
+  bcs +
+    brk 0
+
++  
+.endif
+
+  SCRIPT_NEW Brightness.CLS.PTR obj.brightness
+
+_warmReset:
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave titleScreen
+  WAIT_FOR_WITH_BUTTON_ESCAPE obj.script.slave INPUT.DEVICE.ID.0 JOY_BUTTON_START _doIntro
+
+_doIntro:
+  AUDIO_FADE AUDIO.VOLUME.MUTE
+
+  lda.w #BRIGHTNESS.NONE
+  SCRIPT_CALL Brightness.fadeTo.MTD obj.brightness
+  SAVE
+  SCRIPT_CALL Brightness.isDone.MTD obj.brightness
+  bcs +
+    rts
+
++
+  SCRIPT_TRY Script.kill.MTD obj.script.slave
+  
+  lda.w #sprite.generic.CLS.PTR
+  SCRIPT_JSR iterator.library.kill.byId
+
+  WAIT_AUDIO_FADE_COMPLETE
+
+  SCRIPT_JSR core.audio.stopSong
+
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave intro
+  WAIT_FOR obj.script.slave
+
+  ;start game here
+  SCRIPT_NEW Script.CLS.PTR obj.script.slave game level.sony_hq_1.PTR
+
+  WAIT_FOR obj.script.slave
+  jmp _warmReset
+  
+  CALLBACK oncommand.mainSetTargetScript
+  lda OBJECT.CALL.ARG.1+3,s
+  cmp.w #SCRIPT.COMMAND.SET_SCRIPT
+  bne +
+    lda OBJECT.CALL.ARG.2+3,s
+    sta targetScript
+
++
+  rtl
+
+
+;script support functions to save space
+_cutscene_kill_enemies:
+  AX16
+  SCRIPT_JSR iterator.library.reset
+_killEnemies.loop:
+  lda.w #OBJECT.PROPERTIES.isEnemy
+  jsl extern.iterator.each.byProperties
+  bcc _killEnemies.done
+    ;dont kill objects that are currently being grabbed
+    lda.w #(OBJECT.PROPERTIES.isOnScreen | OBJECT.PROPERTIES.isGrabbed)
+    SCRIPT_JSR iterator.library.matchesProperties
+    bcs _killEnemies.loop
+
+    ;dont kill bosses
+    lda iterator.target
+    and.w #$ff
+    cmp.w #lifeform.miniboss.CLS.PTR
+    beq _killEnemies.loop
+
+    ;dont kill piano, either
+    cmp.w #lifeform.static.CLS.PTR
+    bne _killEnemies.doKill
+      SCRIPT_CALL lifeform.static.getAnimationBase.MTD iterator.target
+      cmp.w #SPRITE.piano.PTR
+      beq _killEnemies.loop
+
+_killEnemies.doKill:
+    SCRIPT_CALL iterator.library.kill.MTD iterator.target
+    bra _killEnemies.loop
+
+_killEnemies.done:
+  lda.w #level.exit.CLS.PTR
+  SCRIPT_JSR iterator.library.kill.byId
+  rts
+
+_cutscene_kill_enemies_and_bosses:
+  AX16
+  SCRIPT_JSR iterator.library.reset
+_killEnemiesBosses.loop:
+  lda.w #OBJECT.PROPERTIES.isEnemy
+  jsl extern.iterator.each.byProperties
+  bcc _killEnemiesBosses.done
+
+    ;dont kill piano
+    lda iterator.target
+    and.w #$ff
+    cmp.w #lifeform.static.CLS.PTR
+    bne _killEnemiesBosses.doKill
+      SCRIPT_CALL lifeform.static.getAnimationBase.MTD iterator.target
+      cmp.w #SPRITE.piano.PTR
+      beq _killEnemiesBosses.loop
+
+_killEnemiesBosses.doKill:
+    SCRIPT_CALL iterator.library.kill.MTD iterator.target
+    bra _killEnemiesBosses.loop
+
+_killEnemiesBosses.done:
+  lda.w #level.exit.CLS.PTR
+  SCRIPT_JSR iterator.library.kill.byId  
+  rts
+
+
+_cutscene_pause_player:
+  AX16
+  SCRIPT_JSR iterator.library.reset
+_pausePlayer.loop:
+  lda.w #OBJECT.PROPERTIES.isPlayer
+    jsl extern.iterator.each.byProperties
+  bcc _pausePlayer.done
+    CUTSCENE_PAUSE iterator.target
+    bra _pausePlayer.loop
+
+_pausePlayer.done:  
+  rts
+
+_cutscene_resume_player:
+  AX16
+  SCRIPT_JSR iterator.library.reset
+_resumePlayer.loop:
+  lda.w #OBJECT.PROPERTIES.isPlayer
+    jsl extern.iterator.each.byProperties
+  bcc _resumePlayer.done
+    CUTSCENE_RESUME iterator.target
+    bra _resumePlayer.loop
+
+_resumePlayer.done:  
+  rts
+
+
+_setCutscene:
+  AX16
+  lda.w #:oncommand.skipCutsceneNormal.CLB
+  sta this.oncommand+2
+  lda.w #oncommand.skipCutsceneNormal.CLB
+  sta this.oncommand
+
+  lda.w #(OBJECT.PROPERTIES.isCutscene | OBJECT.PROPERTIES.isLevelMember)
+  SCRIPT_JSR iterator.library.setProperties
+
+  ;optional cutscene. disable if others exist
+  SCRIPT_JSR iterator.library.reset
+  rts
+
+
+_explosion_big:
+  AX16
+  lda 3,s
+  tax
+  lda 5,s
+  tay
+  pea 2
+  pea 0
+  pea 3
+  pea MATH.000_DEG
+  pea ANIMATION.FLAGS.CENTER_ON_INIT
+  pea $3 
+  pea SPRITE.explosion.dust.PTR 
+  phy
+  phx
+  SCRIPT_NEW_TRY sprite.directed.CLS.PTR VOID
+  lda 11,s
+  clc
+  adc.w #MATH.090_DEG
+  sta 11,s
+  SCRIPT_NEW_TRY sprite.directed.CLS.PTR VOID
+  lda 11,s
+  clc
+  adc.w #MATH.090_DEG
+  sta 11,s  
+  SCRIPT_NEW_TRY sprite.directed.CLS.PTR VOID
+  lda 11,s
+  clc
+  adc.w #MATH.090_DEG
+  sta 11,s  
+  SCRIPT_NEW_TRY sprite.directed.CLS.PTR VOID
+  plx
+  ply
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+
+
+  pea -7
+  pea 0
+  pea 10
+  pea MATH.045_DEG
+  pea ANIMATION.FLAGS.CENTER_ON_INIT
+  pea $3 
+  pea SPRITE.explosion.dust.PTR 
+  phy
+  phx
+  SCRIPT_NEW_TRY sprite.directed.CLS.PTR VOID
+  lda 11,s
+  clc
+  adc.w #MATH.090_DEG
+  sta 11,s
+  SCRIPT_NEW_TRY sprite.directed.CLS.PTR VOID
+  lda 11,s
+  clc
+  adc.w #MATH.090_DEG
+  sta 11,s  
+  SCRIPT_NEW_TRY sprite.directed.CLS.PTR VOID
+  lda 11,s
+  clc
+  adc.w #MATH.090_DEG
+  sta 11,s  
+  SCRIPT_NEW_TRY sprite.directed.CLS.PTR VOID
+  plx
+  ply
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+ 
+  lda.w #AUDIO.EFFECT.EXPLOSION
+  SCRIPT_JSR interface.dimension.playSoundEffect  
+  SCRIPT_NEW_TRY level.screen.shake.CLS.PTR VOID 0 0 0 0 10 $3 
+  rts

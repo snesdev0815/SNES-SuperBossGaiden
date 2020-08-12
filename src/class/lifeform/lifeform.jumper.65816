@@ -1,0 +1,118 @@
+/**
+* Small bouncing enemy
+* 
+*/
+
+.include "src/class/lifeform/lifeform.jumper.h"
+.section "lifeform.jumper"
+
+  METHOD init
+  lda.w #SPRITE.toro.idle.PTR
+  ldx.w #LIFEFORM.ABILITIES.JUMP
+  jsl extern.lifeform.initialize
+
+  lda #lifeform.turn.CLB
+  sta lifeform.callback.touch.wall
+  lda #apple.jump.CLB
+  sta lifeform.callback.touch.floor
+
+  lda.w #$7
+  sta.b animation.speed    
+  rts
+
+  CALLBACK apple.jump
+  sep #$20
+  lda #LIFEFORM.STATE.JUMPING
+  sta lifeform.state
+
+  lda #LIFEFORM.CONDITION.AIRBORNE
+  sta lifeform.condition
+
+  lda #LIFEFORM.JUMP.AGE
+  sta lifeform.action.age
+  rep #$31
+
+  lda.w #AUDIO.EFFECT.DASH
+  jsr interface.dimension.playSoundEffect
+
+  ldx #APPLE.JUMP.IMPULSE
+  lda this.jump.count
+  bne +
+    ldx #APPLE.JUMP.IMPULSE*8
+
++
+  txa
+  sta dimension.speed.y
+
+  ldx #APPLE.JUMP.ACCEL
+  lda this.jump.count
+  bne +
+    ldx #APPLE.JUMP.ACCEL*8
+
++
+  txa  
+  sta dimension.acceleration.y
+
+
+  lda this.jump.count
+  inc a
+  and.w #$3
+  sta this.jump.count
+
+  ;overcome ground traction
+  dec dimension.position.y+1
+
+  lda.w #SPRITE.dust.PTR
+  ldx.w #0
+  ldy.w #10
+  jsl extern.lifeform.sprite
+  rts
+
+
+  METHOD play
+    jsl extern.lifeform.evalOffscreen
+    lda.w #ANIMATION.FLAGS.X_MIRROR
+    trb animation.flags.static    
+    rts
+
+
+  METHOD pause
+  jmp sprite.library.pauseAnimation
+
+  METHOD kill
+  jmp sprite.library.kill
+
+
+  METHOD oncommand
+  AX16
+  lda OBJECT.CALL.ARG.1,s
+  cmp #LIFEFORM.COMMAND.ATTACK
+  bne +
+    jsr lifeform.fruit.reportAttack
+    jsl extern.lifeform.onAttack
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.GRAB
+  bne +
+    jsl extern.lifeform.onGrab
+    rts
+
++
+  cmp #LIFEFORM.COMMAND.THROW
+  bne +
+    jsr lifeform.fruit.reportAttack
+    jsl extern.lifeform.onThrow
+    rts
+
++
+  clc
+  rts
+
+  METHOD setPosition
+  jmp lifeform.library.setBasepointPosition
+
+  CLASS lifeform.jumper oncommand
+  
+.ends	
+	

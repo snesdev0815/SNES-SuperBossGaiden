@@ -1,0 +1,284 @@
+/**
+* support functions for clearing memory
+*
+*/
+
+.include "src/core/memoryclear.h"
+.section "memclear"
+
+ClearRegisters:
+	php
+	phb
+	rep #$31
+	sep #$20
+	lda.b #REGS
+	pha
+	plb
+	ldx #OBJSEL
+
+MemClearLoop1:		;regs OBJSEL-BG34NBA
+		stz.w $00,X		;set Sprite,Character,Tile sizes to lowest, and set addresses to $0000
+		inx
+		cpx #BG1HOFS
+		bne MemClearLoop1
+
+MemClearLoop2:		;regs BG1HOFS-BG4VOFS
+		stz.w $00,X		;Set all BG scroll values to $0000
+		stz.w $00,X
+		inx
+		cpx #VMAIN
+		bne MemClearLoop2
+	
+	lda #VMAIN_INCREMENT_MODE		;reg VMAIN
+	sta VMAIN		; Initialize VRAM transfer mode to word-access, increment by 1
+	stz VMADDL
+	stz VMADDH		;VRAM address = $0000
+	stz M7SEL		;clear Mode7 setting
+	ldx #M7A
+
+MemClearLoop3:		;regs M7A-M7Y
+		stz.w $00,X		;clear out the Mode7 matrix values
+		stz.w $00,X
+		inx
+		cpx #CGADD
+		bne MemClearLoop3
+	ldx #W12SEL
+
+MemClearLoop4:			;regs W12SEL-SETINI
+		stz.w $00,X		;turn off windows, main screens, sub screens, color addition,
+		inx				;fixed color = $00, no super-impose (external synchronization),
+		cpx #MPYL		;no interlaced mode, normal resolution
+		bne MemClearLoop4
+    stz.w HDMAEN
+    plb
+	plp
+	rts
+
+/**
+* clear memory block in wram bank $7e (without dma)
+*
+* @param a<3bit>	clear pattern (@see ClearWramBytePatterns)
+* @param y<16bit>	block size
+* @param x<16bit>	block adress
+*/	
+/*
+ClearWRAM:
+	php
+	phx
+	phy
+	phb
+	pea (RAM | RAM << 8)
+	plb
+	plb
+    phx
+    rep #$31
+    and.w #$7   ;calculate adress of clear pattern word(8 entries max)
+    asl a
+    tax
+    lda.l ClearWramBytePatterns,x
+    sep #$20
+    plx
+
+ClearWRAMLoop:
+		sta.w 0,x
+		inx
+		dey
+		bne ClearWRAMLoop
+
+	plb
+	ply
+	plx
+	plp
+	rts
+*/
+/**
+* clear memory block in wram bank $7e (without dma)
+*
+* @param a<3bit>	clear pattern (@see ClearWramBytePatterns)
+* @param y<16bit>	block size
+* @param x<16bit>	block adress
+*/	
+ClearWRAM:
+	php
+	phx
+	phy
+	phb
+	pea (RAM | (RAM << 8))
+	plb
+	plb
+
+    rep #$31
+    and.w #$f   ;calculate adress of clear pattern word(8 entries max)
+    asl a
+    tax
+    sep #$20
+    lda.l ClearWramBytePatterns,x
+    xba
+    lda.l ClearWramBytePatterns,x
+    rep #$31
+    pha
+
+	;clear in 32 byte blocks
+	lda 6,s
+	tax
+
+	lda 4,s
+	lsr a
+	lsr a
+	lsr a
+	lsr a
+	lsr a
+	tay
+	beq +
+-
+			lda 1,s
+			sta.w $00,x
+			sta.w $02,x
+			sta.w $04,x
+			sta.w $06,x
+			sta.w $08,x
+			sta.w $0a,x
+			sta.w $0c,x
+			sta.w $0e,x
+			sta.w $10,x
+			sta.w $12,x
+			sta.w $14,x
+			sta.w $16,x
+			sta.w $18,x
+			sta.w $1a,x
+			sta.w $1c,x
+			sta.w $1e,x
+			txa
+			clc
+			adc.w #$20
+			tax
+			dey
+			bne -
+
++
+	;clear remainder in single byte steps
+	lda 4,s
+    	and.w #$1f
+	tay
+	beq +
+		sep #$20
+		lda 1,s
+-
+			sta.w $00,x
+			inx
+			dey
+			bne -
+
+		rep #$31
++
+
+	pla
+	plb
+	ply
+	plx
+	plp
+	rts
+
+
+;clears whole vram. irqs must be disabled, screen blanked.   
+ClearVRAM:
+	pha
+	phx
+	php
+	phb
+	rep #$30		; mem/A = 8 bit, X/Y = 16 bit
+	sep #$20
+	lda #REGS
+	pha
+	plb   
+	lda #VMAIN_INCREMENT_MODE
+	sta VMAIN         ;Set VRAM port to word access
+	lda #DMAP_FIXED_TRANSFER | DMAP_2_REG_WRITE_ONCE
+	sta DMAP0         ;Set DMA mode to fixed source, WORD to VMDATAL/VMDATAH
+	lda #VMDATAL & $ff
+	sta DMADEST0
+	ldx #$0000
+	stx VMADDL         ;Set VRAM port address to $0000
+	ldx #VramClearByte
+	stx DMASRC0L         ;Set source address to $xx:0000
+	lda #:VramClearByte
+	sta DMASRC0B         ;Set source bank to $00
+	ldx #$FFFF
+	stx DMALEN0L         ;Set transfer size to 64k-1 bytes
+	lda #DMA_CHANNEL0_ENABLE
+	sta MDMAEN         ;Initiate transfer
+	stz VMDATAH         ;clear the last byte of the VRAM
+	plb
+	plp
+	plx
+	pla
+	rts
+
+
+;clears whole cgram. irqs must be disabled, screen blanked.   
+ClearCGRAM:
+	pha
+	phx
+	php
+	phb
+	rep #$30		; mem/A = 8 bit, X/Y = 16 bit
+	sep #$20
+	lda #REGS
+	pha
+	plb   
+	lda #DMAP_FIXED_TRANSFER | DMAP_1_REG_WRITE_ONCE
+	sta DMAP0         ;Set DMA mode to fixed source, WORD to VMDATAL/VMDATAH
+	lda #CGDATA & $ff
+	sta DMADEST0
+	ldx #$0000
+	stx CGADD         ;Set VRAM port address to $0000
+	ldx #VramClearByte
+	stx DMASRC0L         ;Set source address to $xx:0000
+	lda #:VramClearByte
+	sta DMASRC0B         ;Set source bank to $00
+	ldx #$256
+	stx DMALEN0L         ;Set transfer size to 64k-1 bytes
+	lda #DMA_CHANNEL0_ENABLE
+	sta MDMAEN         ;Initiate transfer
+	stz VMDATAH         ;clear the last byte of the VRAM
+	plb
+	plp
+	plx
+	pla
+	rts
+
+VramClearByte:
+	.db $00
+
+;param 1, 16bit: source adress
+;param 2, 16bit: source bank
+;param 3, 16bit:target adress in $7e
+;param 4: length
+core.memory.copyToWRAM:
+	AX16
+	lda 9,s
+	sta.l DMALEN0L         ;Set transfer size
+	lda 3,s
+	sta.l DMASRC0L	;dma source
+	lda 7,s
+	sta.l WMADDL	;$7f0000
+
+	sep #$20
+	lda 5,s
+	sta.l DMASRC0B         ;Set source bank to $00
+
+	lda #0
+	sta.l WMADDH	;bank $7e
+
+	lda #DMAP_1_REG_WRITE_TWICE
+	sta.l DMAP0         ;Set DMA mode to inc source, WORD to WMDATA
+	lda #WMDATA & $ff
+	sta.l DMADEST0
+
+	lda #DMA_CHANNEL0_ENABLE
+	sta.l MDMAEN         ;Initiate transfer
+	rep #$31
+	rts
+
+.ends
+

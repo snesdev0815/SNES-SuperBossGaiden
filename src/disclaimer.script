@@ -1,0 +1,145 @@
+/**
+* Disclaimer that's displayed immediately after booting.
+*
+*/
+
+  SCRIPT disclaimer
+  	.redef obj.vwf hashPtr.3
+	.redef obj.parser hashPtr.4
+
+	.redef obj.brightness this._tmp
+	.redef obj.fixedColor this._tmp+4
+
+	SCRIPT_NEW Brightness.CLS.PTR obj.brightness
+	lda.w #BRIGHTNESS.NONE
+	SCRIPT_CALL Brightness.set.MTD obj.brightness
+
+	SCRIPT_NEW fixedColor.CLS.PTR obj.fixedColor
+	lda.w #FIXED_COLOR.BLACK
+	SCRIPT_CALL fixedColor.set.MTD obj.fixedColor
+	SCRIPT_NEW_TRY background.textlayer.vwf.CLS.PTR obj.vwf $3000 BG.LAYER.2 0 0
+
+	pei (obj.vwf)
+	pei (obj.vwf+2)
+	SCRIPT_NEW vwf.parser.CLS.PTR obj.parser
+	pla
+	pla
+
+
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+    	rts
+
++
+
+	;draw text
+	pea VOID
+	pea 16
+	pea 14
+	pea 248
+	pea FONT.big_2bpp.PTR
+	pea text.dialogue.disclaimer
+	SCRIPT_CALL vwf.parser.print.MTD obj.parser
+	pla
+	pla
+	pla
+	pla
+	pla
+	pla
+
+	;wait for print complete
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+		rts
+
++
+
+	;draw text
+	pea VOID
+	pea 88
+	pea 14
+	pea 240
+	pea FONT.big_2bpp.PTR
+	pea text.dialogue.disclaimer2
+	SCRIPT_CALL vwf.parser.print.MTD obj.parser
+	pla
+	pla
+	pla
+	pla
+	pla
+	pla
+
+	;wait for print complete
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+		rts
+
++
+
+	;draw text
+	pea VOID
+	pea 128
+	pea 14
+	pea 240
+	pea FONT.big_2bpp.PTR
+	pea text.dialogue.disclaimer3
+	SCRIPT_CALL vwf.parser.print.MTD obj.parser
+	pla
+	pla
+	pla
+	pla
+	pla
+	pla
+
+	;wait for print complete
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+		rts
+
++
+
+	;draw text
+	pea VOID
+	pea 200
+	pea 14
+	pea 240
+	pea FONT.big_2bpp.PTR
+	pea text.dialogue.disclaimer4
+	SCRIPT_CALL vwf.parser.print.MTD obj.parser
+	pla
+	pla
+	pla
+	pla
+	pla
+	pla
+
+	;wait for print complete
+	SAVE
+	SCRIPT_CALL background.textlayer.vwf.isDone.MTD obj.vwf
+	bcs +
+		rts
+
++
+
+	lda.w #BRIGHTNESS.FULL
+	SCRIPT_CALL Brightness.fadeTo.MTD obj.brightness
+
+	CUTSCENE_WAIT_LONG
+	CUTSCENE_WAIT_LONG
+	CUTSCENE_WAIT_LONG
+
+	lda.w #BRIGHTNESS.NONE
+	SCRIPT_CALL Brightness.fadeTo.MTD obj.brightness
+	SAVE
+	SCRIPT_CALL Brightness.isDone.MTD obj.brightness
+	bcs +
+		rts
+
++
+  	DIE
+  
+  

@@ -1,0 +1,476 @@
+/**
+* object iterator.
+*
+* facilities that enable inter-object searchability by object properties.
+* these are object support functions that may only be called from within an object context!
+* !!each object must include the iteratorStruct at the very beginning of its zero page for this to work properly!!
+*
+* implementation details:
+* 	-16 boolean properties per object
+* 	-to make access easy, iterator and properties are part of every objects zero page
+* 	-deleting/creating objects while iterating over objects is discouraged!!!(if callee expects a valid/sane result, that is)
+* 	-properties are modifiable at runtime.
+*		-object default properties are contained in class
+* 	-needed object zero page vars (every object has these):
+* 	  -self ds 4				;obj hash of self in object stack
+* 	  -properties dw			;properties that can be searched for
+* 	  -target ds 4		;obj hash of current matching iterator target object (default 0)
+* 	  -index dw		;index of current target object in object stack (default 0). this is a relative pointer, not a counter!! (i.e. you can't use this directly to deduce that this is the nth object in object stack)
+* 	  -count dw		;amount of found objects since last iterator.reset
+* 
+* 
+* 	-need the following functions:
+* 	  -reset(): resets iterator.index to 0
+* 	  -each(properties): seeks for next object matching all properties, returns carry set if found, else clear. sets iterator.index and iterator.target accordingly
+* 		-typically, object do a while(each(properties))-loop to find all objects with properties, then do something with these objects by using iterator.target
+* 		-calling each once will just get the first object, or none
+* 		-property search:
+* 		  -all bits present in search parameter must be set in object properties for object to be found as target.
+* 		  -advanced composited searches are not possible.
+* 	  -others(): same as each, but current object/callee is excluded from list. useful so that target loops doesnt have to contain compares against self all over the place
+*	  -setProperties
+*	  -clearProperties
+*/
+
+
+.include "src/class/iterator/iterator.library.h"
+.section "iterator.library"
+
+
+/**
+* resets iterator-index and clears target reference. Must be called when initializing a new search
+*/
+iterator.library.reset:
+  AX16
+  pha
+  lda.w #0 - oopStackObj.length
+  sta.b iterator.index
+  stz.b iterator.count
+  stz.b iterator.target
+  stz.b iterator.target + 2
+  pla
+  rts
+
+iterator.library.next.byProperties:
+  AX16
+  pha
+  jsl extern.iterator.each.byProperties
+  bcs +
+    ;wrap around to beginning of stack once
+    lda.w #0 - oopStackObj.length
+    sta.b iterator.index
+    lda 1,s
+    jsl extern.iterator.each.byProperties
+    
++
+  pla
+  rts
+
+iterator.library.previous.byProperties:
+  AX16
+  pha
+  jsl extern.iterator.each.reverse.byProperties
+  bcs +
+    ;wrap around to end of stack once
+    lda.w #OopStackEnd - OopStack - oopStackObj.length
+    sta.b iterator.index
+    lda 1,s
+    jsl extern.iterator.each.reverse.byProperties
++
+  pla
+  rts
+
+
+_iterator.eachFail:
+  ;no matching object found, return
+  ;lets make the last found object persistant. hope this doesnt cause problems
+  pla
+  ply
+  plx
+  clc
+  rts
+
+/**
+* searches for next object matching requested id. if found, writes target object hash to iterator.target of callee
+*
+* @param a<int, 8bit>	target object id (@see OBJID.[]). Object must satisfy requested id to trigger match
+*
+* @return c<bool>	true if object found
+*/
+iterator.library.each.byId:
+  AX16
+  phx
+  phy
+  and.w #$ff
+  pha
+
+	;update callee index to following item
+  lda.b iterator.index
+	clc
+	adc #oopStackObj.length
+	sta.b iterator.index
+	tax
+
+  ;make sure we're not operating beyond object stack
+  cpx #OopStackEnd-OopStack
+  bcs _iterator.eachFail
+
+-	lda.l OopStack.flags-1,x
+	bpl +
+	  ;get target object id
+	  lda.l OopStack.id,x
+	  and.w #$ff
+	  cmp 1,s
+	  bne +
+
+		;store hash pointer to callee target. this will break if hash pointer format is ever changed.
+		lda.l OopStack.id,x
+		sta.b iterator.target
+		lda.l OopStack.num,x
+		sta.b iterator.target + 1
+		txa
+    HASH_POINTER_TO_INDEX
+    sep #$20
+		sta.b iterator.target + 3
+    rep #$31
+
+		;update result count
+		inc.b iterator.count
+		stx.b iterator.index
+
+		pla
+		ply
+		plx
+		sec
+		rts
+
+
+;no object present or object does not match, continue...
++	txa
+	clc
+	adc #oopStackObj.length
+	tax
+	cmp #OopStackEnd-OopStack
+	bcc -
+
+  bra _iterator.eachFail
+
+
+/**
+* searches for next object matching requested properties that is not itself. if found, writes target object hash to iterator.target of callee
+*
+* @param a<word>	properties (@see OBJECT.PROPERTIES.[]). Object must satisfy every requested property to trigger match
+*
+* @return c<bool>	true if object found
+*/
+iterator.library.others:
+  pha
+  jsl extern.iterator.each.byProperties
+  bcc +
+	;is found object equal to self?
+	lda.b iterator.target
+	cmp.b iterator.self
+	bne _others.found
+
+	;dismiss last found:
+	dec.b iterator.count
+
+	;found object is self, run again
+	lda 1,s
+  jsl extern.iterator.each.byProperties
+
++ pla
+  rts
+
+_others.found:
+  sec
+  pla
+  rts
+
+/**
+ * check whether target object satisfied all requested properties
+ * 
+ * @param a <int, 16bit>    properties to check
+ * @param x <int, 16bit>    pointer to hash pointer (e.g.   ldx #hashPtr.1; jsr core.object.exists )
+ * 
+ * @return c <bool> set if valid object present.
+ * @return x <int, 16bit> pointer to object on object stack
+ */
+iterator.library.matchesProperties:
+  AX16
+  pha
+  jsr core.object.exists
+  bcc +
+    lda.l OopStack.dp,x
+    tay
+    ;does target match requested properties?
+    lda.w iterator.properties,y
+    and 1,s
+    cmp 1,s
+    bne +
+      pla
+      sec
+      rts
+
++
+  pla
+  clc
+  rts
+
+
+/**
+* set own properties
+*
+* @param a<word>	properties to set
+*/
+iterator.library.setProperties:
+  AX16
+  tsb iterator.properties
+  rts
+
+/**
+* clear own properties
+*
+* @param a<word>	properties to clear
+*/
+iterator.library.clearProperties:
+  AX16
+  trb iterator.properties
+  rts
+
+
+
+/**
+* kill all objects with input properties (potentially including self)
+*
+* @param a<int, 16bit>	properties of objects to kill
+* @return a<int, 16bit>	count of deleted objects
+*/
+iterator.library.kill.byProperties:
+  AX16
+  pha
+  jsr iterator.library.reset
+-	lda 1,s
+  jsl extern.iterator.each.byProperties
+	bcc +
+	  CALL iterator.library.kill.MTD iterator.target
+	bra -
+
++ pla
+  lda.b iterator.count
+  rts
+
+/**
+* kill all objects of input id (potentially including self)
+*
+* @param a<int, 16bit>	id of objects to kill
+* @return a<int, 16bit>	count of deleted objects
+*/
+iterator.library.kill.byId:
+  AX16
+  and.w #$ff
+  pha
+  jsr iterator.library.reset
+-	lda 1,s
+	jsr iterator.library.each.byId
+	bcc +
+	  CALL iterator.library.kill.MTD iterator.target
+	bra -
+
++ pla
+  lda.b iterator.count
+  rts
+
+/**
+* @param x <int, 16bit> pointer to first object
+* @param y <int, 16bit> number of objects
+*/
+iterator.library.killObjList:
+  AX16
+	;kill all objects that were instanciated in current script 
+	;@TODO: does this even work anymore??
+-		lda #0
+		phy
+		phx
+		jsr core.object.exists
+		bcc +
+		  plx
+		  phx
+		  ldy #Script.kill.MTD
+		  jsr core.object.call
+		  
++
+		plx
+		ply
+		txa
+		clc
+		adc #_sizeof_oopObjHash
+		tax
+		dey
+		bne -
+	
+	rts
+
+  CLASS iterator.library
+.ends
+
+
+.base BSL
+.bank BANK.DATA
+.section "extern.iterator" superfree
+extern.iterator.each.byProperties:
+  AX16
+  pha
+  ;update callee index to following item
+  lda.b iterator.index
+  clc
+  adc #oopStackObj.length
+  sta.b iterator.index
+
+  ;make sure we're not operating beyond object stack
+  cmp #OopStackEnd-OopStack
+  bcs +
+
+  HASH_POINTER_TO_INDEX
+  
+  asl a
+  tax
+  jsr (_each.byProperties.lut,x)
+  pla
+  rtl
+
++
+  pla
+  clc
+  rtl
+
+.macro ITERATOR_EACH_BY_PROPERTIES
+_each.byProps.unrolled.\@:
+  lda.w (OopStack.flags&$ffff)-1+(\@*oopStackObj.length)
+  bpl +
+    ;get target object properties
+    ldx.w (OopStack.dp&$ffff)+(\@*oopStackObj.length)
+    ;does target match requested properties?
+    lda.w iterator.properties,x
+    and 3,s
+    cmp 3,s
+    bne +
+      ;store hash pointer to callee target. this will break if hash pointer format is ever changed.
+      lda.w (OopStack.id&$ffff)+(\@*oopStackObj.length)
+      sta.b iterator.target
+      lda.w (OopStack.num&$ffff)+(\@*oopStackObj.length)
+      sta.b iterator.target + 1
+      sep #$20
+      lda.b #\@
+      sta.b iterator.target + 3
+      rep #$31    
+      inc.b iterator.count
+      lda.w #(\@*oopStackObj.length)
+      sta iterator.index
+      sec
+      rts
+
++  
+.endm
+
+.rept maxNumberOopObjs
+  ITERATOR_EACH_BY_PROPERTIES
+.endr
+  clc
+  rts
+
+.macro ITERATOR_EACH_BY_PROPERTIES_POINTER
+  .dw _each.byProps.unrolled.\@
+.endm
+
+_each.byProperties.lut:
+.rept maxNumberOopObjs
+  ITERATOR_EACH_BY_PROPERTIES_POINTER
+.endr
+
+
+/**
+* searches for previous object matching requested properties. if found, writes target object hash to iterator.target of callee
+*
+* @param a<word>  properties (@see OBJECT.PROPERTIES.[]). Object must satisfy every requested property to trigger match
+*
+* @return c<bool> true if object found
+*/
+extern.iterator.each.reverse.byProperties:
+  AX16
+  pha
+  ;update callee index to previous item
+  lda.b iterator.index
+  sec
+  sbc #oopStackObj.length
+  sta.b iterator.index
+
+  ;make sure we're not operating beyond object stack
+  cmp #OopStackEnd-OopStack
+  bcs +
+
+  HASH_POINTER_TO_INDEX
+  
+  ;stupid hack
+  pha
+  lda.w #maxNumberOopObjs-1
+  sec
+  sbc 1,s
+  asl a
+  tax
+  pla
+  jsr (_each.reverse.byProperties.lut,x)
+  pla
+  rtl
+
++
+  pla
+  clc
+  rtl
+
+
+.macro ITERATOR_EACH_REVERSE_BY_PROPERTIES
+_each.reverse.byProps.unrolled.\@:
+  lda.w (OopStack.flags&$ffff)-1+((maxNumberOopObjs-1-\@)*oopStackObj.length)
+  bpl +
+    ;get target object properties
+    ldx.w (OopStack.dp&$ffff)+((maxNumberOopObjs-1-\@)*oopStackObj.length)
+    ;does target match requested properties?
+    lda.w iterator.properties,x
+    and 3,s
+    cmp 3,s
+    bne +
+      ;store hash pointer to callee target. this will break if hash pointer format is ever changed.
+      lda.w (OopStack.id&$ffff)+((maxNumberOopObjs-1-\@)*oopStackObj.length)
+      sta.b iterator.target
+      lda.w (OopStack.num&$ffff)+((maxNumberOopObjs-1-\@)*oopStackObj.length)
+      sta.b iterator.target + 1
+      sep #$20
+      lda.b #(maxNumberOopObjs-1-\@)
+      sta.b iterator.target + 3
+      rep #$31    
+      inc.b iterator.count
+      lda.w #((maxNumberOopObjs-1-\@)*oopStackObj.length)
+      sta iterator.index
+      sec
+      rts
+
++  
+.endm
+
+.rept maxNumberOopObjs
+  ITERATOR_EACH_REVERSE_BY_PROPERTIES
+.endr
+  clc
+  rts
+
+.macro ITERATOR_EACH_REVERSE_BY_PROPERTIES_POINTER
+  .dw _each.reverse.byProps.unrolled.\@
+.endm
+
+_each.reverse.byProperties.lut:
+.rept maxNumberOopObjs
+  ITERATOR_EACH_REVERSE_BY_PROPERTIES_POINTER
+.endr
+
+.ends

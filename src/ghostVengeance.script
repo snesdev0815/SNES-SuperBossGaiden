@@ -1,0 +1,178 @@
+/**
+* Final chase sequence, crushing ceiling and ghosts throwing fireball
+*
+*/
+
+  SCRIPT ghostVengeance
+
+  ;dont forget to clear pointers before DIE here!
+  .redef obj.player this._tmp+0
+  .redef obj.hud this._tmp+4
+  .redef obj.scrollLayer this._tmp+8
+
+  .redef cutoff.y script.args+0
+  .redef explosion.x script.args+2
+  .redef explosion.y script.args+4
+  .redef timer script.args+6
+
+  lda.w #OBJECT.PROPERTIES.isLevelMember
+  SCRIPT_JSR iterator.library.setProperties
+
+    CUTSCENE_ACQUIRE_OBJECT lifeform.player.CLS.PTR obj.player
+
+    stz cutoff.y
+
+    lda.w #DIALOGUE.STATE.GHOST
+    sta.w GLOBAL.dialogueState
+
+  ;try to acquire level bg layer 
+  SCRIPT_JSR iterator.library.reset
+
+-
+    lda.w #background.level.layer.CLS.PTR
+    SCRIPT_JSR iterator.library.each.byId
+    bcs ++
+        SCRIPT_TRIGGER_ERROR E_Todo
+
+++
+    SCRIPT_CALL background.level.layer.getBgId.MTD iterator.target
+    cmp.w #BG.LAYER.1
+    bne -
+      lda iterator.target
+      sta obj.scrollLayer
+      lda iterator.target+2
+      sta obj.scrollLayer+2
+
+++
+
+  SAVE
+
+-
+    inc timer
+
+
++    
+    ldx.w #obj.player
+    SCRIPT_JSR core.object.exists
+    bcs +
+        DIE
+
++    
+        lda.w FrameCounter
+        ror a
+        bcc +
+            ;halt a bit in the beginning so player gets a chance to react
+            lda timer
+            cmp.w #3*60
+            bcc +++
+            cmp.w #12*60
+            bcc +
++++
+                ;dont move if player killed
+                inc cutoff.y
+
++
+    ;set position of falling floor
+    lda cutoff.y
+    and.w #$800-1
+    pha
+    pea 0
+    SCRIPT_CALL background.level.layer.setPosition.MTD obj.scrollLayer
+    pla
+    pla
+
+    ;hurt player if he is above falling floor
+    SCRIPT_CALL lifeform.library.getCollisionBasepoint.MTD obj.player
+
+    tya
+    sec
+    sbc.w #30*8
+    cmp cutoff.y
+    bcs +
+        pei (obj.scrollLayer)
+        pei (obj.scrollLayer+2)
+        SCRIPT_CALL lifeform.library.oncommand.MTD obj.player LIFEFORM.COMMAND.SQUASH
+        pla
+        pla
+
++    
+
+    lda timer
+    and.w #$1f
+    beq +
+        rts
+
++
+
+    ;explosion
+++
+    ;x-pos: random
+    SCRIPT_JSR core.random.get
+    and.w #$ff
+    clc
+    adc.w (GLOBAL.screen.position.x&$ffff)+1
+    sta explosion.x
+
+    /*y-pos:
+        max(min(random &$ff + screen.y, cutoff.y),screen.y)
+    */
+    SCRIPT_JSR core.random.get
+    and.w #$ff
+    clc
+    adc.w (GLOBAL.screen.position.y&$ffff)+1
+
+    ldx cutoff.y
+
+    SCRIPT_JSR core.math.min
+
+    ldx.w (GLOBAL.screen.position.y&$ffff)+1
+
+    SCRIPT_JSR core.math.max
+
+    sta explosion.y
+
+    jsr _explode
+
+    jmp -
+
+  rts
+
+
+_explode:
+    AX16
+    pea -7
+    pea 0
+    pea 10
+
+    pea MATH.000_DEG
+    pea ANIMATION.FLAGS.CENTER_ON_INIT
+    pea 3
+    pea SPRITE.explosion.dust.PTR
+    pei (explosion.y)
+    pei (explosion.x)
+    SCRIPT_NEW_TRY sprite.directed.CLS.PTR VOID
+    lda.w #MATH.045_DEG
+    sta 11,s
+    SCRIPT_NEW_TRY sprite.directed.CLS.PTR VOID
+    lda.w #MATH.135_DEG
+    sta 11,s
+    SCRIPT_NEW_TRY sprite.directed.CLS.PTR VOID
+    lda.w #MATH.180_DEG
+    sta 11,s
+    SCRIPT_NEW_TRY sprite.directed.CLS.PTR VOID
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+
+    pla
+    pla
+    pla
+
+
+    lda.w #AUDIO.EFFECT.EXPLOSION
+    SCRIPT_JSR interface.dimension.playSoundEffect  
+    SCRIPT_NEW_TRY level.screen.shake.CLS.PTR VOID 0 0 0 0 10 $3
+    rts

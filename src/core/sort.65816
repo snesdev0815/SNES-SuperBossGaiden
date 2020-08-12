@@ -1,0 +1,8 @@
+;just a static hook for sort so that out-of-bounds sorts can happen after objects of a frame have been processed
+;(reason: if sorting inside object, it's possible to sort objects in such a way, that some get executed twice, some not at all for a given frame)
+
+.include "src/core/sort.h"
+.section "sort"
+
+.ends
+

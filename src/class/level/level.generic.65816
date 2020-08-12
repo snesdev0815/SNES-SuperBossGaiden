@@ -1,0 +1,1669 @@
+/**
+* Level object representing a map in the game
+*
+* Automatically generates auxiliary scroll layers, handles collision requests, generates objects as they appear on screen.
+*
+* @param 1<int, 8bit>  level number
+*/
+.include "src/class/level/level.generic.h"
+.section "level.generic"
+
+  ;@todo: no need for complicated range checks when instanciating object. just start at designated tile, check if bigger than level size every tile
+  METHOD init
+  sep #$20
+  lda OBJECT.CALL.ARG.1,s
+  sta.b this.id
+  stz.w FixedColourR
+  stz.w FixedColourG
+  stz.w FixedColourB
+  rep #$31
+  jsr _setPointer
+
+  jsr core.screen.init
+
+  ;fetch some config data from level
+  ldy #LEVEL.TILESIZE.X
+  lda [this.pointer],y
+  asl a
+  asl a
+  asl a
+  sta dimension.size.x
+
+
+  ldy #LEVEL.TILESIZE.Y
+  lda [this.pointer],y
+  asl a
+  asl a
+  asl a
+  sta dimension.size.y
+
+  ;not really! ;obsolete
+  ldx dimension.size.x
+  ldy dimension.size.y
+  jsr core.screen.setPlayfieldSize
+
+  sep #$20
+  ldy #LEVEL.LAYER.FLAGS
+  lda [this.pointer],y
+  sta this.layer.flags
+  rep #$31
+
+  ;do this first so initialization seems less long
+  ldy #LEVEL.SONG
+  lda [this.pointer],y
+  and.w #$ff
+  cmp.w #Song.none.PTR
+  beq +
+    sta this.song
+    jsr core.audio.playSong
+
++
+  ldy #LEVEL.BORDER.BOTTOM
+  lda [this.pointer],y
+  asl a
+  asl a
+  asl a
+  pha
+
+  ldy #LEVEL.BORDER.RIGHT
+  lda [this.pointer],y
+  asl a
+  asl a
+  asl a
+  pha
+
+  ldy #LEVEL.BORDER.TOP
+  lda [this.pointer],y
+  asl a
+  asl a
+  asl a
+  pha
+
+  ldy #LEVEL.BORDER.LEFT
+  lda [this.pointer],y
+  asl a
+  asl a
+  asl a
+  pha
+
+  jsr core.screen.setPlayfieldBorder
+
+  pla
+  pla
+  pla
+  pla
+
+  ldy #LEVEL.SCROLLFACTOR.BG.LOWER
+  lda [this.pointer],y
+  sta this.scrollfactor.layer.lower
+
+  ldy #LEVEL.SCROLLFACTOR.BG.UPPER
+  lda [this.pointer],y
+  sta this.scrollfactor.layer.upper
+
+  ldy #LEVEL.SCROLLFACTOR.BG.STATUS
+  lda [this.pointer],y
+  sta this.scrollfactor.layer.status
+
+  ldy #LEVEL.TIMER.GOLD
+  lda [this.pointer],y
+  sta this.timer.gold
+
+  ldy #LEVEL.TIMER.SILVER
+  lda [this.pointer],y
+  sta this.timer.silver
+
+  ldy #LEVEL.HIDDEN_TREASURE.COUNT
+  lda [this.pointer],y
+  and.w #$ff
+  sta this.treasure.count
+
+  ldy #LEVEL.CGADSUB
+  lda [this.pointer],y
+  and.w #$ff
+  sta this.cgadsub
+
+  ldy #LEVEL.MISC.FLAGS
+  lda [this.pointer],y
+  and.w #$ff
+  sta this.misc.flags
+
+
+  ldy #LEVEL.LAYER.FLAGS.LOWER
+  lda [this.pointer],y
+  bne +
+    lda.w #ANIMATION.FLAGS.IS_MAINSCREEN
+  
++
+  sta this.layer.flags.lower
+
+  ldy #LEVEL.LAYER.FLAGS.UPPER
+  lda [this.pointer],y
+  bne +
+    lda.w #ANIMATION.FLAGS.IS_MAINSCREEN
+  
++
+  sta this.layer.flags.upper
+
+  ldy #LEVEL.LAYER.FLAGS.STATUS
+  lda [this.pointer],y
+  bne +
+    lda.w #ANIMATION.FLAGS.IS_SUBSCREEN
+  
++
+  sta this.layer.flags.status
+
+  ;make sure these are non-zero so that object map is check completely on load
+  lda #$8000
+  sta this.screen.x
+  sta this.screen.y
+
+  sep #$20
+  ldy #LEVEL.OBJECT.COUNT
+  lda [this.pointer],y
+  cmp #LEVEL.MAX.OBJECTS
+  bcc +
+    pha
+    pei (this.id)
+    TRIGGER_ERROR E_LevelTooManyObjects
+
++
+  sta this.object.count
+
+  ldy #LEVEL.LAYER.COUNT
+  lda [this.pointer],y
+  sta this.layer.count
+
+  ;get palette length
+  rep #$31
+  ldy #LEVEL.POINTER.PALETTE
+  lda [this.pointer],y
+  pha
+  iny
+  iny
+  lda [this.pointer],y
+  sec
+  sbc 1,s
+  sta this.palette.length
+  pla
+
+  ;get tileset length
+  ldy #LEVEL.TILESET.LENGTH
+  lda [this.pointer],y
+  sta this.tileset.length
+
+  ldy #LEVEL.TILESET_STATUS.LENGTH
+  lda [this.pointer],y
+  sta this.tileset_status.length
+
+  lda dimension.size.x
+  lsr a
+  lsr a
+  lsr a
+  sta this.tilemap.dimension.x
+
+  jsr _allocateMemory
+
+
+  ;must do this separately because created/deleted objects must be remembered even after disable/enable
+  lda this.object.count
+  and.w #$ff
+  asl a
+  sta this.objmap.length
+
+  ;allocate wram buffer for objmap upload
+  ldx.b this.objmap.length
+
+  jsr core.wram.allocate
+  bcs +
+    pei (this.objmap.length)
+    TRIGGER_ERROR E_OutOfWram
+
+
++ stx.b this.objmap.start
+  sep #$20
+  sta.b this.objmap.id
+  rep #$31
+
+  jsr _setupObjectList
+  jsr _uploadTileset
+  jsr _uploadPalette
+  jsr _uploadLayerMaps
+  jsr _uploadMetatiles  
+
+  stz.w GLOBAL.acceleration.x
+  stz.w GLOBAL.acceleration.y
+
+  jsr _instanciateObjects
+
+  lda.w #VOID
+  sta.w GLOBAL.watchdog
+
+  jsr _setupBgLayers
+  ;check once, make sure stuff on screen is immediately instanciated.
+  jsr _checkObjectInstanciation.immediate
+  jmp _sortObjects
+
+
+_setPointer:
+  php
+  rep #$31
+  and.w #$ff
+  pha
+  asl a
+  adc 1,s
+  asl a
+  tax
+  pla
+  lda.l levelLUT+LEVEL.LUT.POINTER,x
+  sta this.pointer
+  lda.l levelLUT+LEVEL.LUT.POINTER +1,x
+  sta this.pointer +1
+
+  ;check if magic signature valid
+  ldy #LEVEL.MAGIC
+  lda [this.pointer],y
+  cmp #LEVEL.MAGIC.VALUE
+  beq +
+    pei (this.id)
+    TRIGGER_ERROR E_BadLevel
+
++  
+  plp
+  rts
+
+level.library.getName:
+  php
+  rep #$31
+  phx
+  pha
+  and.w #$ff
+  asl a
+  adc 1,s
+  asl a
+  tax
+  lda.l levelLUT+LEVEL.NAME.POINTER,x
+  plx
+  plx
+  plp
+  rts
+
+_setupObjectList:
+  AX16
+  lda this.object.count
+  and.w #$ff
+  asl a
+  clc
+  adc.w #LEVEL.POINTER.OBJECT
+  pha ;source max
+
+  ldy.w #LEVEL.POINTER.OBJECT
+  ldx this.objmap.start
+-
+    tya
+    cmp 1,s
+    bcs +
+
+      ;assume that first parameter is x-pos, second is y-pos
+      ;this is bad, but i dont know how to do it otherwise
+      jsr _getObjectParm.x
+
+      ;store tile position
+      lsr a
+      lsr a
+      lsr a
+      sep #$20
+      sta.w GLOBAL.wramBuffer.start,x
+      rep #$31
+      inx
+
+      jsr _getObjectParm.y
+
+      ;store tile position
+      lsr a
+      lsr a
+      lsr a
+      sep #$20
+      sta.w GLOBAL.wramBuffer.start,x
+      rep #$31
+      inx
+
+      iny
+      iny
+      bra -
+
++
+  pla
+  rts
+
+_getObjectParm.x:
+  AX16
+  phy
+  ;get next object pointer (max)
+  iny
+  iny
+  lda [this.pointer],y
+  pha
+
+  ;hack to spare us from having dummy params for every script create
+  pea lifeform.player.parameter.pos.x
+  lda 5,s
+  tay
+  lda [this.pointer],y
+  tay
+  lda [this.pointer],y
+  cmp.w #Script.CLS.PTR
+  bne +
+    lda.w #Script.parameter.pos.x
+    sta 1,s
+
++
+
+  ;get pointer to current object data
+  lda 5,s
+  tay
+  lda [this.pointer],y
+  inc a
+  inc a
+  tay
+-
+    tya
+    cmp 3,s
+    bcs +
+      ;search for first arg, assume its x-pos
+      lda [this.pointer],y
+      cmp 1,s
+      bne ++
+        iny
+        iny
+        lda [this.pointer],y
+        bra +
+++
+      iny
+      iny
+      iny
+      iny
+      bra -
+
++
+  ply
+  ply
+  ply
+  rts
+
+_getObjectParm.y:
+  AX16
+  phy
+  ;get next object pointer (max)
+  iny
+  iny
+  lda [this.pointer],y
+  pha
+
+  ;hack to spare us from having dummy params for every script create
+  pea lifeform.player.parameter.pos.y
+  lda 5,s
+  tay
+  lda [this.pointer],y
+  tay
+  lda [this.pointer],y
+  cmp.w #Script.CLS.PTR
+  bne +
+    lda.w #Script.parameter.pos.y
+    sta 1,s
+
++
+
+  ;get pointer to current object data
+  lda 5,s
+  tay
+  lda [this.pointer],y
+  inc a
+  inc a
+  tay
+-
+    tya
+    cmp 3,s
+    bcs +
+      ;search for first arg, assume its x-pos
+      lda [this.pointer],y
+      cmp 1,s
+      bne ++
+        iny
+        iny
+        lda [this.pointer],y
+        bra +
+++
+      iny
+      iny
+      iny
+      iny
+      bra -
+
++
+  ply
+  ply
+  ply
+  rts
+
+
+_setupBgLayers:
+  php
+
+  ;do subscreen color math on bg3 by default
+  sep #$20
+  
+  lda #(CGWSEL_CLIP_COL_NEVER | CGWSEL_NO_COL_MATH_NEVER | CGWSEL_ADD_SUBSCREEN)
+  sta.w colorAdditionSelect
+
+  lda this.cgadsub
+  bne +
+    ;no special level config for cgadsub? use defaults.
+    lda #(CGADSUB_ADDSUB_COL | CGADSUB_HALF_COL | CGADSUB_BAC_ENABLE | CGADSUB_OBJ_ENABLE | CGADSUB_BG3_ENABLE | CGADSUB_BG2_ENABLE | CGADSUB_BG1_ENABLE)
+
++
+  sta.w CgadsubConfig
+
+  lda.b #(BGMODE_MODE_1 | BGMODE_PRIORITY_LAYER_3)
+  sta.w ScreenMode
+
+
+
+  lda.w SubScreen
+  and.b #(T_BG1_ENABLE | T_BG2_ENABLE | T_BG3_ENABLE | T_BG4_ENABLE) ~$ff  
+  sta.w SubScreen
+
+  rep #$31
+
+  ;get pointer to level 8x8 tilemap blocks
+  lda this.object.count
+  and.w #$ff
+  asl a
+  adc.w #LEVEL.POINTER.OBJECT
+  inc a ;skip object map
+  inc a
+  tay
+
+  lda this.layer.flags
+  bit.w #LEVEL.LAYER.FLAGS.LAYER0
+  beq +
+    pei (this.pointer+2)
+    pei (this.pointer)
+    pei (this.layer.flags.upper) ;animation flags
+    ;scroll factor
+    lda this.scrollfactor.layer.upper
+    and.w #$ff
+    xba
+    ;target layer
+    ora.w #BG.LAYER.0
+    pha
+
+    ;push tileset vram start adress
+    pei (this.tileset.start)
+
+    ;push palette start offset
+    pei (this.palette.startid)
+
+    ;push level size
+    pei (dimension.size.y)
+    pei (dimension.size.x)
+    
+    lda.w #GLOBAL.map.meta.layer0.buffer >> 16
+    xba
+    sep #$20
+    lda.b #GLOBAL.map.metatile.buffer >> 16
+    rep #$31
+    pha
+
+    pea GLOBAL.map.metatile.buffer & $ffff
+
+    ;push pointer to metamap
+    pea GLOBAL.map.meta.layer0.buffer & $ffff
+
+    NEW background.level.layer.CLS.PTR this.layer.pointer.1
+
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+
+    pla
+    pla
+
++
+  lda this.layer.flags
+  bit.w #LEVEL.LAYER.FLAGS.LAYER1
+  beq +
+    pei (this.pointer+2)
+    pei (this.pointer)
+    pei (this.layer.flags.lower) ;animation flags
+    ;get pointer to second bg layer in level
+    lda this.object.count
+    and.w #$ff
+    asl a
+    adc.w #LEVEL.POINTER.OBJECT
+    tay
+
+    iny ;object map
+    iny
+
+    iny ;tilemap
+    iny
+    iny
+  
+    iny ;collision metamap
+    iny
+    iny
+
+    iny ;first metalayer
+    iny
+    iny
+
+    ;scroll factor
+    lda this.scrollfactor.layer.lower
+    and.w #$ff
+    xba
+    ;target layer
+    ora.w #BG.LAYER.1
+    pha
+
+    ;push tileset vram start adress
+    pei (this.tileset.start)
+
+    ;push palette start offset
+    pei (this.palette.startid)
+
+    ;push level size
+    pei (dimension.size.y)
+    pei (dimension.size.x)
+    
+    lda.w #GLOBAL.map.meta.layer0.buffer >> 16
+    xba
+    sep #$20
+    lda.b #GLOBAL.map.metatile.buffer >> 16
+    rep #$31
+    pha
+
+    pea GLOBAL.map.metatile.buffer & $ffff
+
+    ;use "last used" slot, depending on how many of the previous layers are used
+    ldx.w #GLOBAL.map.meta.layer1.buffer & $ffff
+    lda this.layer.flags
+    bit.w #LEVEL.LAYER.FLAGS.LAYER0
+    bne ++
+      ldx.w #GLOBAL.map.meta.layer0.buffer & $ffff
+
+++
+    phx    
+    NEW background.level.layer.CLS.PTR this.layer.pointer.2
+
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+
++
+
+  lda this.layer.flags
+  bit.w #LEVEL.LAYER.FLAGS.LAYER2
+  beq +
+    ;get pointer to status layer in level
+    lda this.object.count
+    and.w #$ff
+    asl a
+    adc.w #LEVEL.POINTER.OBJECT
+    tay
+
+    iny ;object map
+    iny
+
+    iny ;tilemap
+    iny
+    iny
+  
+    iny ;collision metamap
+    iny
+    iny
+
+    iny ;first metalayer
+    iny
+    iny
+
+    iny ;second metalayer
+    iny
+    iny
+    pei (this.pointer+2)
+    pei (this.pointer)
+    pei (this.layer.flags.status) ;animation flags
+
+    ;scroll factor
+    lda this.scrollfactor.layer.status
+    and.w #$ff
+    xba
+    ;target layer
+    ora.w #BG.LAYER.2
+    pha
+
+    ;push tileset vram start adress
+    pei (this.tileset_status.start)
+
+    ;push palette start offset
+    pei (this.palette_status.startid)
+
+    ;push level size
+    pei (dimension.size.y)
+    pei (dimension.size.x)
+    
+    lda.w #GLOBAL.map.meta.layer0.buffer >> 16
+
+    xba
+    sep #$20
+    lda.b #GLOBAL.map.metatile.buffer >> 16
+    rep #$31
+    pha
+
+    pea GLOBAL.map.metatile.buffer & $ffff
+
+    ;use "last used" slot, depending on how many of the previous layers are used
+    ldx.w #GLOBAL.map.meta.layer2.buffer & $ffff
+    lda this.layer.flags
+    and.w #(LEVEL.LAYER.FLAGS.LAYER0 | LEVEL.LAYER.FLAGS.LAYER1)
+    cmp.w #(LEVEL.LAYER.FLAGS.LAYER0 | LEVEL.LAYER.FLAGS.LAYER1)
+    beq +++
+    bne ++
+      ldx.w #GLOBAL.map.meta.layer0.buffer & $ffff
+      bra +++
+++    
+      ldx.w #GLOBAL.map.meta.layer1.buffer & $ffff
+
++++
+    phx
+    NEW background.level.layer.CLS.PTR this.layer.pointer.3
+
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+
+
++
+  plp
+  rts
+
+
+_uploadLayerMaps:
+  AX16
+  lda this.object.count
+  and.w #$ff
+  asl a
+  adc.w #LEVEL.POINTER.OBJECT
+  tay
+
+  iny ;object map
+  iny
+
+  iny ;tilemap
+  iny
+  iny
+
+  lda [this.pointer],y
+  tax
+  iny
+  iny
+  lda [this.pointer],y
+
+  and.w #$ff
+  pea GLOBAL.map.meta.collision.buffer & $ffff
+  pea GLOBAL.map.meta.collision.buffer >> 16
+  jsr core.unpack.unpack
+  pla
+  pla
+  rts
+
+_uploadMetatiles:
+  AX16
+  lda this.object.count
+  and.w #$ff
+  asl a
+  adc.w #LEVEL.POINTER.OBJECT
+  tay
+
+  iny ;object map
+  iny
+    
+  lda [this.pointer],y
+  tax
+  iny
+  iny
+  lda [this.pointer],y
+
+  and.w #$ff
+  pea GLOBAL.map.metatile.buffer & $ffff
+  pea GLOBAL.map.metatile.buffer >> 16
+  jsr core.unpack.unpack
+  pla
+  pla
+  rts
+
+_uploadPalette:
+  AX16
+  ;transfer
+  tsx
+
+  ldy #LEVEL.POINTER.PALETTE
+  lda [this.pointer],y
+  clc
+  adc this.pointer
+  tay
+
+  sep #$20
+  lda #DMA_TRANSFER.CGRAM   ;transfer type
+  pha
+  phy
+  lda.b this.pointer +2       ;source bank
+  pha
+  rep #$31
+
+  pei (this.palette.start)
+  pei (this.palette.length)
+
+  jsr core.dma.registerTransfer
+  txs
+  rts
+
+
+
+_uploadTileset:
+  AX16
+  ldy #LEVEL.POINTER.TILESET
+  lda [this.pointer],y
+  tax
+  iny
+  iny
+  lda [this.pointer],y
+  and.w #$ff
+  pea UNPACK.TARGET & $ffff
+  pea UNPACK.TARGET >> 16
+  jsr core.unpack.unpack
+  pla
+  pla
+
+  tsx
+  sep #$20
+  lda #DMA_TRANSFER.VRAM    ;transfer type
+  pha
+  pea UNPACK.TARGET &$ffff
+  lda.b #UNPACK.TARGET >> 16
+  pha
+  rep #$31
+  
+  pei (this.tileset.start)
+  pei (this.tileset.length)
+
+  jsr core.dma.immediateTransfer
+
+  lda this.tileset_status.length
+  beq +
+    sep #$20
+    lda #DMA_TRANSFER.VRAM    ;transfer type
+    pha
+    rep #$31
+    ldy #LEVEL.POINTER.TILESET_STATUS
+    lda [this.pointer],y
+    pha
+    sep #$20  
+    iny
+    iny
+    lda [this.pointer],y
+    pha
+    rep #$31
+    
+    pei (this.tileset_status.start)
+    pei (this.tileset_status.length)
+
+    jsr core.dma.registerTransfer
+
++
+  txs
+  rts
+
+_instanciateObjects:
+  php
+
+  ;get pointer to first object in level
+  pea 0
+
+--
+    rep #$31
+    lda 1,s
+    asl a
+    clc
+    adc #LEVEL.POINTER.OBJECT
+    tay
+    iny
+    iny
+    lda [this.pointer],y
+    sta this.object.current.arg.length
+    dey
+    dey
+    lda [this.pointer],y
+
+    tay
+    lda [this.pointer],y
+    sta this.object.current
+
+    jsr _objectRequiresInstantInstanciation
+    bcc ++
+
+    iny
+    iny
+    
+    jsr _setupArgs
+   
+    pei (this.object.current.args+18)
+    pei (this.object.current.args+16)
+    pei (this.object.current.args+14)
+    pei (this.object.current.args+12)
+    pei (this.object.current.args+10)
+    pei (this.object.current.args+08)
+    pei (this.object.current.args+06)
+    pei (this.object.current.args+04)
+    pei (this.object.current.args+02)
+    pei (this.object.current.args+00)
+
+    ldx #VOID
+    ldy this.object.current
+
+    jsr core.object.create.try
+
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+    pla
+
+    bcc ++
+      ;clear object from list
+      lda 1,s
+      asl a
+      clc
+      adc this.objmap.start
+      tax
+      stz.w (GLOBAL.wramBuffer.start&$ffff),x
+
+
+++
+    sep #$20
+    lda 1,s
+    inc a
+    sta 1,s
+    cmp this.object.count
+    bcc --
+
+  rep #$31
+  pla
+  plp
+  rts
+
+_objectRequiresInstantInstanciation:
+  .accu 16
+  ;stupid hack: hardcode all object types that need immediate initialization
+  cmp #lifeform.player.CLS.PTR
+  beq +
+
+  cmp #hdma.paletteAnimation.CLS.PTR
+  beq +
+
+  cmp #hdma.brightness.CLS.PTR
+  beq +
+
+  cmp #palette.animation.CLS.PTR
+  beq +
+
+  cmp #sprite.dummy.CLS.PTR
+  beq +
+
+    clc
+    rts
+
++
+    sec
+    rts
+
+
+
+_allocateMemory:
+  AX16
+  ;allocate tile vram
+  ldy.w #0
+  lda.w #TILES.GRANULARITY
+  ldx.b this.tileset.length
+  
+  jsr core.vram.allocate
+  bcs +
+    pei (this.tileset.length)
+    TRIGGER_ERROR E_OutOfVram
+
+
++ stx.b this.tileset.start
+  sep #$20
+  sta.b this.tileset.id
+  rep #$31
+
+  ldy.w #0
+  lda.w #TILES.GRANULARITY
+  ldx.b this.tileset_status.length
+  beq ++
+  
+  jsr core.vram.allocate
+  bcs +
+    pei (this.tileset_status.length)
+    TRIGGER_ERROR E_OutOfVram
+
+
++ stx.b this.tileset_status.start
+  sep #$20
+  sta.b this.tileset_status.id
+  rep #$31
+
+++
+  lda.w #PALETTE.GRANULARITY.4BPP
+  ldy.w #PALETTE.START.BG.4BPP
+  ldx.b this.palette.length
+  beq ++
+    jsr core.cgram.allocate
+    bcs +
+      pei (this.palette.length)
+      TRIGGER_ERROR E_OutOfCgram
+
+
++   stx.b this.palette.start
+    sep #$20
+    sta.b this.palette.id
+    rep #$31
+
+    lda this.palette.start
+    lsr a ;divide by $20
+    lsr a
+    lsr a
+
+    sep #$20
+    and.b #BG.PALETTE.BITS
+    sta this.palette.startid
+    rep #$31
+++
+  rts
+
+_deallocateMemory:
+  php
+  sep #$20
+  lda.b this.tileset.id
+  beq +
+    jsr core.vram.deallocate
+    stz.b this.tileset.id
+
++ 
+  lda.b this.tileset_status.id
+  beq +
+    jsr core.vram.deallocate
+    stz.b this.tileset_status.id
+
++ 
+  lda.b this.palette.id
+  beq +
+    jsr core.cgram.deallocate
+    stz.b this.palette.id
+
++
+  plp
+  rts
+
+
+
+_killChildren:
+  AX16
+  lda #OBJECT.PROPERTIES.isLevelMember
+  jmp iterator.library.kill.byProperties
+
+  
+  METHOD play
+  ;gotta move this somewhere else, causes objects not to execute for one frame (sprite flicker)
+  jsr _checkObjectInstanciation
+.if IS_3D == 1
+  lda.w FrameCounter
+  and.w #$f
+  bne +
+    jsr sprite.library.zsort
+
++
+.endif    
+  rts
+
+
+/**
+*
+* @param a<int,16bit> number of object in level object list to instanciate
+*/
+level.generic.instanciateObject:
+  php
+  rep #$31
+  phx
+  phy
+  and.w #$ff
+  asl a
+  clc
+  adc #LEVEL.POINTER.OBJECT
+  tay
+  iny
+  iny
+  lda [this.pointer],y
+  sta this.object.current.arg.length
+  dey
+  dey
+  lda [this.pointer],y
+
+  tay
+  lda [this.pointer],y
+  sta this.object.current
+  iny
+  iny
+  
+  jsr _setupArgs
+
+  pei (this.object.current.args+24)
+  pei (this.object.current.args+22)
+  pei (this.object.current.args+20)
+  pei (this.object.current.args+18)
+  pei (this.object.current.args+16)
+  pei (this.object.current.args+14)
+  pei (this.object.current.args+12)
+  pei (this.object.current.args+10)
+  pei (this.object.current.args+08)
+  pei (this.object.current.args+06)
+  pei (this.object.current.args+04)
+  pei (this.object.current.args+02)
+  pei (this.object.current.args+00)
+
+  ldx #VOID
+  ldy this.object.current
+
+  jsr core.object.create.try
+
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+  pla
+
+  ply
+  plx
+  bcs +
+    plp
+    clc
+    rtl
+
++
+  plp
+  sec
+  rtl
+
+_setupArgs:
+    ;clear object args
+    ldx #(OBJECT.CALL.ARGS.MAX)*2
+-
+      stz this.object.current.args,x
+      dex
+      dex
+      bpl -
+
+      ;load arguments
+-
+      lda [this.pointer],y
+      cmp #OBJECT.CALL.ARGS.MAX+1
+      bcc +
+        pha
+        pei (this.id)
+        TRIGGER_ERROR E_TooManyObjectArgs
+
++
+      asl a
+      tax
+      iny
+      iny
+      lda [this.pointer],y
+      sta this.object.current.args,x
+      iny
+      iny
+      cpy this.object.current.arg.length
+      bcc -
+  rts
+
+      
+/**
+* Gets collision tile of level relative to input coordinates (@see LEVEL.COLLISION.TILE.)
+*
+* @param 1<int, 16bit>  x-pos
+* @param 2<int, 16bit>  y-pos
+*
+* @return a<int, 16bit>  collision tile
+*/
+level.library.getCollisionTile:
+  AX16
+  pea 0 ;push args
+  pea 0
+  lda 1+2+4,s ;get x-pos
+  lsr a
+  lsr a
+  lsr a
+  sta 1,s   ;store x-tile
+
+  lda 3+2+4,s ;get y-pos
+  lsr a
+  lsr a
+  lsr a     ;got y-tile
+  xba       ;multiply by 256
+  clc
+  adc 1,s   ;add x-tile
+  sta 3,s   ;store combined xy-tile
+  and.w #$f
+  sta 1,s
+
+  lda 3,s
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  asl a
+
+  tax
+  lda.l GLOBAL.map.meta.collision.buffer,x
+
+  clc
+  adc 1,s
+  clc
+  adc 1,s 
+  tax
+
+  pla
+  pla
+
+  ;get actually requested tile
+  lda.l (GLOBAL.map.metatile.buffer&$ffff) | RAM_UPPER,x
+  
+  ;plp
+  rts
+
+extern.level.getCollisionTile:
+  AX16
+  ;php
+  ;rep #$31
+  pea 0 ;push args
+  pea 0
+  lda 1+3+4,s ;get x-pos
+  lsr a
+  lsr a
+  lsr a
+  sta 1,s   ;store x-tile
+
+  lda 3+3+4,s ;get y-pos
+  lsr a
+  lsr a
+  lsr a     ;got y-tile
+  xba       ;multiply by 256
+  clc
+  adc 1,s   ;add x-tile
+  sta 3,s   ;store combined xy-tile
+  and.w #$f
+  sta 1,s
+
+  lda 3,s
+  lsr a
+  lsr a
+  lsr a
+  lsr a
+  asl a
+
+  tax
+  lda.l GLOBAL.map.meta.collision.buffer,x
+
+  clc
+  adc 1,s
+  clc
+  adc 1,s 
+  tax
+
+  pla
+  pla
+
+  ;get actually requested tile
+  lda.l (GLOBAL.map.metatile.buffer&$ffff) | RAM_UPPER,x
+  rtl
+
+
+/**
+* Check if input tile can be walked on
+*
+* @param a<int, 4bit>  collision tile
+*
+* @return c<bool>  set if walkable
+*/
+collision.library.isWalkable:
+  pha
+  lda 1,s
+  and.w #LEVEL.COLLISION.MODE.MASK
+  cmp.w #LEVEL.COLLISION.MODE.SOLID
+  beq +
+
+    pla
+    sec
+    rts
+
+
++
+  pla
+  clc
+  rts
+
+
+  METHOD kill
+  jsr _killChildren
+  jsr _deallocateMemory
+
+  ;again, must do this separately due to enable/disable
+  lda.b this.objmap.id
+  beq +
+    jsl extend.wram.deallocate
+    stz.b this.objmap.id
+
++ 
+  jmp object.library.kill
+
+
+  METHOD disable
+  jsr _deallocateMemory
+
+  lda #OBJECT.PROPERTIES.isLevelMember
+  jsr _disable.byProperties
+
+  lda #OBJECT.PROPERTIES.isPlayer
+  jsr _disable.byProperties
+
+  rts
+
+_disable.byProperties:
+  pha
+  jsr iterator.library.reset
+-  
+    lda 1,s
+    jsl extern.iterator.each.byProperties
+    bcc +
+      ldx #iterator.target
+      jsr core.object.disable
+      bra -
+
++
+  pla
+  rts
+
+
+_enable.byProperties:
+  pha
+  jsr iterator.library.reset
+-  
+    lda 1,s
+    jsl extern.iterator.each.byProperties
+    bcc +
+      ldx #iterator.target
+      jsr core.object.enable
+      bra -
+
++
+  pla
+  rts
+
+
+  METHOD enable
+  ;only reenable song if player object still present (if hes dead, we wont be resuming level)
+  jsr iterator.library.reset
+  lda.w #lifeform.player.CLS.PTR
+  jsr iterator.library.each.byId
+  bcc +
+    lda this.song
+    jsr core.audio.playSong
+
++    
+  jsr _allocateMemory
+  jsr _uploadTileset
+  jsr _uploadPalette
+  jsr _uploadMetatiles  ;tileset overwrites metatiles, upload again
+
+  lda #OBJECT.PROPERTIES.isPlayer
+  jsr _enable.byProperties
+
+  lda #OBJECT.PROPERTIES.isLevelMember
+  jsr _enable.byProperties
+
+  rts
+
+/**
+* get target map player coordinates
+*
+* @param a int,16bit: target level id
+* @return x int,16bit: default position x
+* @return y int,16bit: default position y
+*/
+.redef temp.pointer temp.misc
+.redef temp.arg.length temp.misc+3
+.redef temp.obj.current temp.misc+5
+.redef temp.obj.count temp.misc+7
+static.level.generic.getPlayerDefaultPosition:
+  php
+  phd
+  phb
+
+  rep #$31
+  and.w #$ff
+  pha
+
+  lda.w #ZP
+  tcd
+
+  pea RAM | (RAM << 8)
+  plb
+  plb
+
+  lda 1,s  
+  asl a
+  adc 1,s
+  asl a
+  tax
+
+  lda.l levelLUT+LEVEL.LUT.POINTER,x
+  sta temp.pointer
+  lda.l levelLUT+LEVEL.LUT.POINTER +1,x
+  sta temp.pointer+1
+
+  ;check if magic signature valid
+  ldy #LEVEL.MAGIC
+  lda [temp.pointer],y
+  cmp #LEVEL.MAGIC.VALUE
+  beq +    
+    TRIGGER_ERROR E_BadLevel
+
++
+
+  sep #$20
+  ldy #LEVEL.OBJECT.COUNT
+  lda [temp.pointer],y
+  cmp #LEVEL.MAX.OBJECTS
+  bcc +
+    TRIGGER_ERROR E_LevelTooManyObjects
+
++
+
+  rep #$31
+  and.w #$ff
+  sta temp.obj.count
+  
+  pea 0   ;ypos
+  pea 0   ;xpos
+  pea 0
+
+--
+
+    lda 1,s
+    asl a
+    clc
+    adc #LEVEL.POINTER.OBJECT
+    tay
+    iny
+    iny
+    lda [temp.pointer],y
+    sta temp.arg.length
+    dey
+    dey
+    lda [temp.pointer],y
+
+    tay
+    lda [temp.pointer],y
+    sta temp.obj.current
+    cmp #lifeform.player.CLS.PTR
+    bne ++
+
+    iny
+    iny
+ 
+-
+      lda [temp.pointer],y
+      cmp #OBJECT.CALL.ARGS.MAX+1
+      bcc +
+        TRIGGER_ERROR E_TooManyObjectArgs
+
++
+      iny
+      iny
+      cmp #lifeform.player.parameter.pos.x
+      bne +++
+        lda [temp.pointer],y
+        sta 3,s
++++      
+      cmp #lifeform.player.parameter.pos.y
+      bne +++
+        lda [temp.pointer],y
+        sta 5,s
++++      
+
+      iny
+      iny
+      cpy temp.arg.length
+      bcc -
+
+
+++
+    lda 1,s
+    inc a
+    sta 1,s
+    cmp temp.obj.count
+    bcc --
+
+  pla
+
+  plx
+  ply
+
+  pla
+  plb
+  pld
+  plp
+  rts
+
+  METHOD getName
+  lda this.id
+  jsr level.library.getName
+  rts
+
+  METHOD getConfigFlags
+  lda this.misc.flags
+  rts
+
+  METHOD getId
+  lda this.id
+  rts
+
+  METHOD setSong
+  sta this.song
+  rts
+
+_checkObjectInstanciation:
+  AX16
+  lda.w FrameCounter
+  and.w #FRAME_CHECK.PHASE.MASK
+  cmp.w #FRAME_CHECK.PHASE.OBJECTS
+  beq +
+    rts
+
++
+_checkObjectInstanciation.immediate:
+  jsr core.screen.getPosition
+
+  txa
+  lsr a
+  lsr a
+  lsr a
+  tax
+
+  tya
+  lsr a
+  lsr a
+  lsr a
+  tay
+
+  cpx this.screen.x
+  bne +
+
+  cpy this.screen.y
+  bne +
+    ;abort
+    rts
+
++
+  ;check for new objects
+  stx this.screen.x
+  sty this.screen.y
+
+  sep #$20
+  txa
+  sec
+  sbc.b #LEVEL.OBJ_WINDOW/8
+  bcs +
+    lda.b #0
+
++
+  sta this.objwindow.left
+  txa
+  clc
+  adc.b #(SCREEN.SIZE.X+LEVEL.OBJ_WINDOW)/8
+  bcc +
+    lda.b #255
+
++
+  sta this.objwindow.right
+  tya
+  sec
+  sbc.b #LEVEL.OBJ_WINDOW/8
+  bcs +
+    lda.b #0
+
++
+  sta this.objwindow.top
+  tya
+  clc
+  adc.b #(SCREEN.SIZE.Y+LEVEL.OBJ_WINDOW)/8
+  bcc +
+    lda.b #255
+
++
+  sta this.objwindow.bottom
+
+  jsl extern.level.checkObjectInstanciation
+  rep #$31
+  rts
+
+;make sure level and level layers are always in front of other stuff that uploads to vram (because level layer uploads are mandatory and will overshoot vblank if registered late in frame)
+_sortObjects:
+  AX16
+  lda.w #OBJECT.PROPERTIES.isLevelSortable
+  ldx.w #iterator.self
+  jmp sort.library.reverse.byProperties
+
+  CLASS level.generic getName getConfigFlags getId setSong
+.ends	
+
+.base BSL
+.bank BANK.DATA
+.section "extend.level.generic" superfree
+
+.macro LEVEL_CHECK_OBJ.POINTER
+  .dw _checkObj.round.\@
+.endm
+
+_checkObj.lut:
+  .rept LEVEL.MAX.OBJECTS
+    LEVEL_CHECK_OBJ.POINTER
+  .endr
+
+.macro LEVEL_CHECK_OBJ
+  A8
+_checkObj.round.\@:
+  ;check if in screen object window
+  lda.w (GLOBAL.wramBuffer.start&$ffff) +((LEVEL.MAX.OBJECTS-\@-1)*2),y
+  beq + ;skip x-zero entry
+  cmp this.objwindow.left
+  bcc +
+  cmp this.objwindow.right
+  bcs +
+  lda.w (GLOBAL.wramBuffer.start&$ffff) +((LEVEL.MAX.OBJECTS-\@-1)*2) +1,y
+  cmp this.objwindow.top
+  bcc +
+  cmp this.objwindow.bottom
+  bcs +
+    lda.b #LEVEL.MAX.OBJECTS-\@-1
+    jsl level.generic.instanciateObject
+    bcc +
+      ;clear from list if created successfully
+      lda.b #0
+      sta.w (GLOBAL.wramBuffer.start&$ffff) +((LEVEL.MAX.OBJECTS-\@-1)*2),y
+
++  
+.endm
+
+  .rept LEVEL.MAX.OBJECTS
+    LEVEL_CHECK_OBJ
+  .endr
+  rtl
+
+
+
+extern.level.checkObjectInstanciation:
+  A8
+  lda.b #LEVEL.MAX.OBJECTS
+  sec
+  sbc this.object.count
+  asl a
+  tax
+  ldy this.objmap.start
+  jmp (_checkObj.lut,x)
+
+.ends
